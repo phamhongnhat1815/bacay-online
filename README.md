@@ -27,7 +27,7 @@ game-3-cay/
 │       │   │   ├── socket/                 # ServerSocket & ClientHandler (Quản lý đa tiến trình Client)
 │       │   │   └── util/                   # Utility classes (JwtUtil, CardUtil...)
 │       │   └── resources/
-│       │       ├── application.properties  # Cấu hình kết nối Database (MySQL, Port, JWT Secret)
+│       │       ├── application.yaml  # Cấu hình kết nối Database (MySQL, Port, JWT Secret)
 │       │       └── schema.sql              # Script tạo bảng CSDL
 │
 └── client/                  # Frontend Module (Java Swing GUI)
