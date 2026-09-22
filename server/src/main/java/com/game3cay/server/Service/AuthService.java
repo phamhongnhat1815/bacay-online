@@ -5,6 +5,7 @@ import com.game3cay.server.Dto.Response.LoginResponse;
 import com.game3cay.server.Dto.Request.RegisterRequest;
 import com.game3cay.server.Model.User;
 import com.game3cay.server.Repository.UserRepository;
+import com.game3cay.server.Security.JwtUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,13 +17,16 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtUtils jwtUtils;
 
     public AuthService(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            JwtUtils jwtUtils
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtUtils = jwtUtils;
     }
 
     // ============================================================
@@ -153,8 +157,12 @@ public class AuthService {
             );
         }
 
+        // Sinh JWT token
+        String token = jwtUtils.generateToken(user);
+
         return new LoginResponse(
                 "Đăng nhập thành công",
+                token,
                 user
         );
     }
