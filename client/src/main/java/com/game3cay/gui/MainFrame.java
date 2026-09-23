@@ -1,62 +1,120 @@
 package com.game3cay.gui;
 
-import com.game3cay.network.SocketTest;
-
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
-public class MainFrame extends JFrame {
+public final class MainFrame extends JFrame {
+    private static final long serialVersionUID = 1L;
 
-    private JTextField txtHost;
-    private JTextField txtPort;
-    private JButton btnConnect;
+    private final JTextField hostField =
+            new JTextField("127.0.0.1", 12);
+
+    private final JTextField portField =
+            new JTextField("8888", 6);
+
+    private final JButton connectButton =
+            new JButton("Kết nối");
+
+    private final JButton disconnectButton =
+            new JButton("Ngắt kết nối");
+
+    private final JButton sendButton =
+            new JButton("Gửi PING thử");
+
+    private final JLabel statusLabel = new JLabel();
+    private final JTextArea logArea = new JTextArea();
 
     public MainFrame() {
-        setTitle("Game 3 Cây - Client");
-        setSize(400, 200);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null); // Hiển thị chính giữa màn hình
-        setLayout(new FlowLayout(FlowLayout.CENTER, 10, 20));
+        setTitle("BTL-LTM — T01: Kết nối client");
+        setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+        setSize(760, 420);
+        setLocationRelativeTo(null);
 
-        txtHost = new JTextField("localhost", 10);
-        txtPort = new JTextField("8888", 5);
-        btnConnect = new JButton("Kết nối Server");
+        JPanel connectionPanel =
+                new JPanel(new FlowLayout(FlowLayout.LEFT));
 
-        add(new JLabel("Host:"));
-        add(txtHost);
-        add(new JLabel("Port:"));
-        add(txtPort);
-        add(btnConnect);
+        connectionPanel.add(new JLabel("IP:"));
+        connectionPanel.add(hostField);
+        connectionPanel.add(new JLabel("Port:"));
+        connectionPanel.add(portField);
+        connectionPanel.add(connectButton);
+        connectionPanel.add(disconnectButton);
 
-        // Sự kiện click nút Kết nối
-        btnConnect.addActionListener(e -> {
-            try {
-                String host = txtHost.getText().trim();
-                int port = Integer.parseInt(txtPort.getText().trim());
+        JPanel bottomPanel = new JPanel(new BorderLayout(10, 0));
+        bottomPanel.add(statusLabel, BorderLayout.CENTER);
+        bottomPanel.add(sendButton, BorderLayout.EAST);
 
-                SocketTest.getInstance().connect(host, port);
-                JOptionPane.showMessageDialog(this, "Kết nối thành công tới Server!");
+        JPanel content = new JPanel(new BorderLayout(8, 8));
+        content.setBorder(
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        );
 
-                // Test gửi tin nhắn JSON thử nghiệm
-                SocketTest.getInstance().send("{\"type\":\"PING\", \"message\":\"Hello from Swing Client\"}");
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Kết nối thất bại: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+        logArea.setEditable(false);
+        logArea.setLineWrap(true);
+        logArea.setWrapStyleWord(true);
+
+        content.add(connectionPanel, BorderLayout.NORTH);
+        content.add(new JScrollPane(logArea), BorderLayout.CENTER);
+        content.add(bottomPanel, BorderLayout.SOUTH);
+
+        setContentPane(content);
+        setConnectionState(false, false, "Chưa kết nối");
+    }
+
+    public String getHost() {
+        return hostField.getText().trim();
+    }
+
+    public String getPortText() {
+        return portField.getText().trim();
+    }
+
+    public void onConnect(Runnable action) {
+        connectButton.addActionListener(e -> action.run());
+    }
+
+    public void onDisconnect(Runnable action) {
+        disconnectButton.addActionListener(e -> action.run());
+    }
+
+    public void onSend(Runnable action) {
+        sendButton.addActionListener(e -> action.run());
+    }
+
+    public void onClose(Runnable action) {
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                action.run();
             }
         });
     }
 
-    public static void main(String[] args) {
-        // Dùng Nimbus Look & Feel tích hợp sẵn trong Java Core
-        try {
-            for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (Exception ignored) {}
+    // Chỉ gọi các hàm cập nhật UI trên EDT.
+    public void setConnectionState(
+            boolean connected,
+            boolean connecting,
+            String text
+    ) {
+        hostField.setEnabled(!connected && !connecting);
+        portField.setEnabled(!connected && !connecting);
 
-        // Bật giao diện Swing
-        SwingUtilities.invokeLater(() -> new MainFrame().setVisible(true));
+        connectButton.setEnabled(!connected && !connecting);
+        disconnectButton.setEnabled(connected || connecting);
+        sendButton.setEnabled(connected);
+
+        statusLabel.setText(text);
+    }
+
+    public void appendLog(String text) {
+        // Không để vùng log tăng mãi khi chạy thử lâu.
+        if (logArea.getDocument().getLength() > 20000) {
+            logArea.setText("");
+        }
+
+        logArea.append(text + System.lineSeparator());
+        logArea.setCaretPosition(logArea.getDocument().getLength());
     }
 }
