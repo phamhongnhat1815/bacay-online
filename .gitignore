@@ -1,0 +1,38 @@
+# ===== Build output =====
+target/
+*.class
+*.jar
+*.war
+
+# ===== IDE =====
+.idea/
+*.iml
+.eclipse/
+.settings/
+.classpath
+.project
+.vscode/
+*.suo
+*.user
+
+# ===== Maven =====
+.mvn/wrapper/
+!.mvn/wrapper/maven-wrapper.properties
+
+# ===== Config chứa thông tin nhạy cảm =====
+# KHÔNG commit file chứa mật khẩu DB, IP máy cá nhân
+server/src/main/resources/db.properties
+client/src/main/resources/connection.properties
+
+# Các file cấu hình mẫu được commit:
+# server/src/main/resources/db.properties.example
+# client/src/main/resources/connection.properties.example
+
+# ===== Logs =====
+logs/
+*.log
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
