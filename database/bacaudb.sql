@@ -27,7 +27,7 @@ CREATE TABLE users (
     display_name  VARCHAR(100),
     email         VARCHAR(100) UNIQUE,
     avatar_url    VARCHAR(255),
-    balance       DECIMAL(15,2) DEFAULT 0,
+    balance       DECIMAL(15,2) DEFAULT 0 CHECK (balance >= 0), -- không cho âm ở cả tầng DB
     status        VARCHAR(20)  DEFAULT 'ACTIVE',  -- ACTIVE / BLOCKED
     created_at    TIMESTAMPTZ  DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  DEFAULT NOW()

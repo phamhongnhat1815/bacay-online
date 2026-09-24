@@ -255,7 +255,7 @@ shared/
 | Loại | Điều kiện |
 |---|---|
 | **Sáp** | 3 lá cùng Rank; A-A-A cao nhất |
-| **Liêng** | 3 lá liên tiếp theo Tiến Lên; Q-K-A cao nhất; xử lý đặc biệt A đầu/cuối dây |
+| **Liêng** | 3 lá liên tiếp theo Tiến Lên: A-2-3 (thấp nhất) → ... → Q-K-A (cao nhất). **Ace vừa đứng đầu vừa đứng cuối:** A-2-3 ✅ và Q-K-A ✅ đều hợp lệ; K-A-2 ❌ không hợp lệ. |
 | **Bồ đội** | Cả 3 lá thuộc {J, Q, K}; không cần thứ tự |
 | **Điểm** | Tổng điểm lấy hàng đơn vị; J/Q/K/10 = 0; 9 là cao nhất |
 

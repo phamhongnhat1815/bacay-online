@@ -80,10 +80,19 @@ public interface UserBUS {
     /**
      * Cập nhật số dư sau ván chơi (ghi transaction).
      * Khánh không gọi trực tiếp — GameBUS gọi nội bộ hoặc Nhật tự quản.
-     * Để đây như điểm tham chiếu hợp đồng với Nhật.
+     *
+     * <p><b>Quy tắc bắt buộc (Nhật triển khai):</b>
+     * <ol>
+     *   <li>Truy vấn {@code SELECT balance FROM users WHERE id = userId FOR UPDATE} trước.</li>
+     *   <li>Nếu {@code currentBalance + delta < 0} → ném ngay
+     *       {@link ErrorCode#INVALID_BET_AMOUNT} — KHÔNG để DB constraint bắt lỗi thay.</li>
+     *   <li>Ghi {@code transactions} rồi mới {@code UPDATE users SET balance = balance + delta}.</li>
+     *   <li>DB cũng có {@code CHECK (balance >= 0)} làm lớp bảo vệ thứ hai.</li>
+     * </ol>
      *
      * @param delta dương = cộng điểm, âm = trừ điểm
-     * @throws BUSException {@link ErrorCode#INTERNAL_ERROR} nếu lỗi DB
+     * @throws BUSException {@link ErrorCode#INVALID_BET_AMOUNT} nếu kết quả sẽ âm;
+     *                      {@link ErrorCode#INTERNAL_ERROR} nếu lỗi DB
      */
     void updateBalance(long userId, java.math.BigDecimal delta) throws BUSException;
 }
