@@ -14,7 +14,3 @@ spring:
   sql:
     init:
       mode: always
-
-jwt:
-  secret: ${JWT_SECRET:bacay_online_super_secret_jwt_key_2026_very_long_and_secure_key_123456789}
-  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
