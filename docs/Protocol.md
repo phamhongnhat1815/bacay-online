@@ -1,8 +1,8 @@
 # Protocol.md — Giao Thức Thông Điệp BaCay Online
 
-**Phiên bản:** 1.0  
+**Phiên bản:** 1.1  
 **Người phụ trách:** Khánh  
-**Cập nhật lần cuối:** 2026-09-25  
+**Cập nhật lần cuối:** 2026-09-27  
 
 > Đây là **hợp đồng triển khai** của cả nhóm. Mọi thay đổi (thêm field, đổi tên type, thay đổi payload) **phải** cập nhật tài liệu này và thông báo cho tất cả thành viên trước khi merge vào `main`.
 
@@ -365,9 +365,14 @@ votes       : Map<Long, Boolean>   // userId → wantPlayAgain
 ```
 roundId       : String
 playerResults : List<PlayerResult>   (sắp xếp theo rank từ cao xuống)
+betHistory    : List<BetRecord>      (lịch sử tố — theo sequenceNo tăng dần)
+sidePots      : List<SidePot>        (rỗng nếu không có ALL_IN)
 roundStatus   : String   (FINISHED / CANCELLED)
 endedAtMillis : long     (đồng hồ server)
 ```
+
+> 📌 `betHistory` và `sidePots` dành cho GameBUS lưu DB và UI hiển thị replay/tóm tắt.  
+> Client có thể bỏ qua `betHistory` nếu chỉ cần hiện kết quả cuối.
 
 #### `PlayerResult` — phần tử trong `RoundResult`
 ```
@@ -378,6 +383,19 @@ hand        : Hand         (null nếu FOLD trước showdown)
 rank        : int          (1 = thắng; 0 = không xếp hạng)
 result      : String       (WIN / LOSE / DRAW / FOLD)
 profit      : BigDecimal   (dương = thắng, âm = thua)
+```
+
+#### `BetRecord` — phần tử trong `RoundResult.betHistory`
+```
+userId           : long
+targetUserId     : Long         (null = tố toàn bàn)
+action           : BetAction    (RAISE / CALL / FOLD / ALL_IN / ANTE)
+raisedPoint      : BigDecimal   (mức cược tích lũy sau action)
+raiseAmount      : BigDecimal   (số điểm tăng thêm; 0 nếu CALL/FOLD)
+multiplierBefore : BigDecimal   (hệ số nhân trước action)
+multiplierAfter  : BigDecimal   (hệ số nhân sau action)
+sequenceNo       : int          (thứ tự action trong ván, bắt đầu từ 1)
+createdAtMillis  : long
 ```
 
 ---

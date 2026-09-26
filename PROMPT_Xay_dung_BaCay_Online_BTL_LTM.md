@@ -165,48 +165,35 @@ CREATE TABLE game_players (
     UNIQUE (game_id, user_id)                     -- chống ghi lặp cùng người trong ván
 );
 
--- 6. Lịch sử đặt cược chi tiết
-CREATE TABLE point_bets (
-    id         BIGSERIAL PRIMARY KEY,
-    game_id    BIGINT        NOT NULL REFERENCES games(id),
-    user_id    BIGINT        NOT NULL REFERENCES users(id),
-    action     VARCHAR(20)   NOT NULL,            -- RAISE/CALL/FOLD/ALL_IN/ANTE
-    amount     DECIMAL(15,2) NOT NULL,
-    created_at TIMESTAMPTZ   DEFAULT NOW()
+CREATE TABLE cards (           -- 52 lá bài tham chiếu (tĩnh, DO block nạp sẵn)
+    id INT PK, suit VARCHAR(10), rank VARCHAR(5),
+    point INT, rank_value INT, suit_value INT
 );
-
--- 7. Side pot
-CREATE TABLE side_pots (
-    id      BIGSERIAL PRIMARY KEY,
-    game_id BIGINT        NOT NULL REFERENCES games(id),
-    amount  DECIMAL(15,2) NOT NULL
+CREATE TABLE game_cards (      -- lịch sử chia bài, ghi khi ván kết thúc
+    game_id BIGINT FK, user_id BIGINT FK, card_id INT FK,
+    card_position INT (1-3), revealed BOOLEAN,
+    UNIQUE (game_id, user_id, card_position),
+    UNIQUE (game_id, card_id)
 );
-CREATE TABLE side_pot_players (
-    id          BIGSERIAL PRIMARY KEY,
-    side_pot_id BIGINT NOT NULL REFERENCES side_pots(id),
-    user_id     BIGINT NOT NULL REFERENCES users(id)
+CREATE TABLE point_bets (      -- lịch sử tố chi tiết
+    game_id BIGINT FK, user_id BIGINT FK,
+    target_user_id BIGINT FK nullable,
+    action VARCHAR(20),        -- RAISE/CALL/FOLD/ALL_IN/ANTE
+    raised_point DECIMAL(15,2), raise_amount DECIMAL(15,2),
+    multiplier_before DECIMAL(8,2), multiplier_after DECIMAL(8,2),
+    sequence_no INT, created_at TIMESTAMPTZ
 );
-
--- 8. Giao dịch điểm
-CREATE TABLE transactions (
-    id            BIGSERIAL PRIMARY KEY,
-    user_id       BIGINT        NOT NULL REFERENCES users(id),
-    game_id       BIGINT        REFERENCES games(id),
-    type          VARCHAR(20)   NOT NULL,         -- BET/WIN/LOSE/REFUND
-    amount        DECIMAL(15,2) NOT NULL,
-    balance_after DECIMAL(15,2),
-    created_at    TIMESTAMPTZ   DEFAULT NOW()
+CREATE TABLE transactions (    -- audit trail đầy đủ
+    user_id BIGINT FK, game_id BIGINT FK nullable,
+    type VARCHAR(20),          -- BET/WIN/LOSE/REFUND
+    amount DECIMAL(15,2),
+    balance_before DECIMAL(15,2), balance_after DECIMAL(15,2),
+    created_at TIMESTAMPTZ
 );
-
--- 9. Chat (chỉ ghi khi ENABLE_CHAT_LOG=true)
-CREATE TABLE chat_messages (
-    id         BIGSERIAL PRIMARY KEY,
-    room_id    BIGINT      NOT NULL REFERENCES rooms(id),
-    sender_id  BIGINT      REFERENCES users(id),
-    content    TEXT        NOT NULL,
-    type       VARCHAR(20) NOT NULL,              -- TEXT/EMOJI/SYSTEM
-    is_hidden  BOOLEAN     DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- games: có round_id VARCHAR(36) UNIQUE (chống ghi lặp), KHÔNG có winner_id
+-- game_players: hand_type = SAP/LIENG/BO_DOI/DIEM (không phải NORMAL)
+-- rooms: CHECK (min_players <= max_players); seat_number CHECK (1..8)
+-- users: CHECK (balance >= 0)
 );
 ```
 
@@ -226,24 +213,30 @@ CREATE TABLE chat_messages (
 ```
 shared/
 ├── network/
-│   ├── Packet.java          (protocolVersion, type, requestId, data)
-│   ├── PacketType.java      (enum — xem mục 3)
-│   └── ErrorCode.java       (enum — 23 mã lỗi, xem Protocol.md)
+│   ├── Packet.java              (protocolVersion, type, requestId, data)
+│   ├── PacketType.java          (enum — 9 nhóm, 30+ type)
+│   └── ErrorCode.java           (enum — 23 mã lỗi)
 ├── model/
-│   ├── Card.java            (Rank + Suit, immutable)
-│   ├── Rank.java            (TWO..ACE, rankValue, pointValue)
-│   ├── Suit.java            (CHUON/BICH/CO/RO, compareValue)
-│   ├── Hand.java            (3 Card + HandType + score)
-│   ├── HandType.java        (SAP/LIENG/BO_DOI/DIEM, strength)
-│   ├── BetAction.java       (RAISE/CALL/FOLD/ALL_IN/ACCEPT)
-│   ├── RoomSnapshot.java    (trạng thái phòng công khai + stateVersion)
-│   ├── BetStateSnapshot.java(pot, lượt, mức cược — công khai)
-│   ├── RoundResult.java     (kết quả ván — sau khi kết thúc)
-│   ├── PlayerResult.java    (hand, rank, result, profit — một người)
-│   ├── SidePot.java         (amount + eligiblePlayerIds)
-│   └── ChatMessage.java     (senderId, content, type, timestampMillis)
+│   ├── Card.java                (Rank + Suit, immutable)
+│   ├── Rank.java                (TWO..ACE, rankValue, pointValue)
+│   ├── Suit.java                (CHUON/BICH/CO/RO, compareValue)
+│   ├── Hand.java                (3 Card + HandType + score)
+│   ├── HandType.java            (SAP/LIENG/BO_DOI/DIEM, strength)
+│   ├── BetAction.java           (RAISE/CALL/FOLD/ALL_IN/ANTE)
+│   ├── BetRecord.java           (1 lượt tố → 1 dòng point_bets; sequenceNo, multiplier)
+│   ├── RoomSnapshot.java        (trạng thái phòng công khai + stateVersion)
+│   ├── BetStateSnapshot.java    (pot, lượt, mức cược — công khai)
+│   ├── GameStateSnapshot.java   (phase, currentTurn, activePlayers — công khai)
+│   ├── PlayerStateSnapshot.java (bài + số dư — bí mật, chỉ gửi riêng)
+│   ├── RoundResult.java         (playerResults + betHistory + sidePots — sau ván)
+│   ├── PlayerResult.java        (hand, rank, result, profit — một người)
+│   ├── SidePot.java             (amount + eligiblePlayerIds)
+│   ├── ChatMessage.java         (senderId, content, type, timestampMillis)
+│   ├── PageResult.java          (generic, dùng cho History + Leaderboard)
+│   ├── GameHistoryItem.java     (một dòng lịch sử ván)
+│   └── LeaderboardItem.java     (một hàng bảng xếp hạng)
 └── security/
-    └── PasswordUtil.java    (hash/verify PBKDF2WithHmacSHA256)
+    └── PasswordUtil.java        (hash/verify PBKDF2WithHmacSHA256)
 ```
 
 ---
