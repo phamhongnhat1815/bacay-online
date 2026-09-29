@@ -17,3 +17,9 @@
 # Environment
 .env
 .env.*
+
+# Công cụ chạy thử trên máy cá nhân
+/local-dev/
+
+# Kết quả build Maven
+**/target/
