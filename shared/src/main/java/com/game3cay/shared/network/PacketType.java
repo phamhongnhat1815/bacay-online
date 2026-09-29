@@ -157,4 +157,6 @@ public enum PacketType {
     GET_LEADERBOARD,
     /** S→C* : Kết quả bảng xếp hạng. Payload: {@code PageResult<LeaderboardItem>}. */
     LEADERBOARD_RESULT,
+    ECHO_REQUEST,
+    SERVER_NOTICE,
 }

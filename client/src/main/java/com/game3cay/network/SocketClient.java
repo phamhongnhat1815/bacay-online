@@ -1,11 +1,24 @@
 package com.game3cay.network;
 
-import com.game3cay.shared.network.*;
-
-import java.io.*;
-import java.net.*;
-import java.util.concurrent.*;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketException;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.game3cay.shared.network.Packet;
+import com.game3cay.shared.network.PacketIO;
+import com.game3cay.shared.network.PacketType;
 
 public final class SocketClient {
     private static final int CONNECT_TIMEOUT_MS = 5000;
@@ -166,7 +179,6 @@ public final class SocketClient {
             return;
         }
 
-        send(Packet.request(PacketType.PING, "heartbeat"));
     }
 
     public boolean isConnected() {

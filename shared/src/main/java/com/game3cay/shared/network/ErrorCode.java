@@ -42,4 +42,5 @@ public enum ErrorCode {
 
     // Dữ liệu
     INVALID_PAGE,       // Số trang hoặc pageSize không hợp lệ
+    NOT_IMPLEMENTED,
 }

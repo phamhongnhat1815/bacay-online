@@ -1,4 +1,4 @@
-package com.bacay.server.bus;
+package com.game3cay.server.bus;
 
 import java.math.BigDecimal;
 

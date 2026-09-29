@@ -39,4 +39,8 @@ public final class Packet implements Serializable {
     public Object getData() {
         return data;
     }
+    public record ErrorPayload(ErrorCode code, String message)
+            implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
+    }
 }

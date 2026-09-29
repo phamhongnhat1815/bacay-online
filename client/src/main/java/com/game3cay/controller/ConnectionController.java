@@ -1,10 +1,12 @@
 package com.game3cay.controller;
 
-import com.game3cay.gui.MainFrame;
-import com.game3cay.network.*;
-import com.game3cay.shared.network.*;
-
 import javax.swing.SwingUtilities;
+
+import com.game3cay.gui.MainFrame;
+import com.game3cay.network.PacketListener;
+import com.game3cay.network.SocketClient;
+import com.game3cay.shared.network.Packet;
+import com.game3cay.shared.network.PacketType;
 
 public final class ConnectionController implements PacketListener {
     private final MainFrame view;
@@ -72,7 +74,7 @@ public final class ConnectionController implements PacketListener {
         }
 
         Packet packet = Packet.request(
-                PacketType.PING,
+                PacketType.ECHO_REQUEST,
                 "T01 #" + ++testNumber
         );
 
