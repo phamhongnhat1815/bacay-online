@@ -2,6 +2,9 @@ package com.game3cay.server.game;
 
 import com.game3cay.server.game.engine.BettingEngine;
 import com.game3cay.server.game.engine.Deck;
+import com.game3cay.server.game.engine.HandComparator;
+import com.game3cay.server.game.engine.HandEvaluator;
+import com.game3cay.server.game.engine.SidePotCalculator;
 import com.game3cay.server.game.exception.GameException;
 import com.game3cay.server.game.model.GameState;
 import com.game3cay.server.game.model.PlayerState;
@@ -9,12 +12,17 @@ import com.game3cay.shared.model.BetAction;
 import com.game3cay.shared.model.BetStateSnapshot;
 import com.game3cay.shared.model.GamePhase;
 import com.game3cay.shared.model.GameStateSnapshot;
+import com.game3cay.shared.model.Hand;
 import com.game3cay.shared.model.PlayerBetInfo;
+import com.game3cay.shared.model.PlayerResult;
 import com.game3cay.shared.model.PlayerStateSnapshot;
 import com.game3cay.shared.model.RoundResult;
+import com.game3cay.shared.model.SidePot;
 import com.game3cay.shared.network.ErrorCode;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -121,11 +129,123 @@ public class GameEngineImpl implements GameEngine {
         new BettingEngine(state).handleAction(actorId, roundId, action, raiseAmount);
     }
 
-    // ═══ G04: KẾT QUẢ VÁN & SO BÀI (Sẽ triển khai trong G04) ═══
+    // ═══ G04: KẾT QUẢ VÁN & SO BÀI ═══
 
     @Override
     public RoundResult finalizeRound(String roundId) throws GameException {
-        throw new UnsupportedOperationException("finalizeRound sẽ được triển khai trong G04");
+        GameState state = getActiveGame(roundId);
+
+        // IDEMPOTENT: Nếu đã chốt rồi → trả ngay kết quả cũ
+        if (state.getFinalResult() != null) return state.getFinalResult();
+
+        // Chỉ chốt khi ván FINISHED hoặc CANCELLED
+        if (state.getPhase() != GamePhase.FINISHED && state.getPhase() != GamePhase.CANCELLED) {
+            throw new GameException(ErrorCode.INVALID_STATE, "Ván chưa kết thúc: " + roundId);
+        }
+
+        RoundResult result = (state.getPhase() == GamePhase.CANCELLED)
+                ? buildCancelledResult(state)
+                : buildFinishedResult(state);
+
+        state.setFinalResult(result);
+        return result;
+    }
+
+    private RoundResult buildFinishedResult(GameState state) {
+        HandComparator comparator = new HandComparator();
+        List<PlayerState> allPlayers = new ArrayList<>(state.getPlayers().values());
+        List<PlayerState> notFolded = allPlayers.stream()
+                .filter(p -> !p.isFolded()).toList();
+
+        // Tính Side Pot nếu có người ALL_IN
+        boolean hasAllIn = notFolded.stream().anyMatch(PlayerState::isAllIn);
+        List<SidePot> sidePots = hasAllIn
+                ? SidePotCalculator.calculate(allPlayers)
+                : List.of();
+
+        List<PlayerResult> results = new ArrayList<>();
+
+        if (notFolded.size() == 1) {
+            // Thắng sớm: chỉ 1 người còn lại, không lật bài
+            PlayerState winner = notFolded.get(0);
+            BigDecimal profit = state.getMainPot().subtract(winner.getCurrentBet());
+            results.add(new PlayerResult(
+                    winner.getUserId(), "", "", null, null,
+                    1, "WIN", profit, winner.getSeatNumber()));
+
+            // Những người fold
+            for (PlayerState p : allPlayers) {
+                if (p.isFolded()) {
+                    results.add(new PlayerResult(
+                            p.getUserId(), "", "", null, null,
+                            0, "FOLD", p.getCurrentBet().negate(), p.getSeatNumber()));
+                }
+            }
+        } else {
+            // SHOWDOWN: đánh giá bài và xếp hạng
+            Map<PlayerState, Hand> hands = new LinkedHashMap<>();
+            for (PlayerState p : notFolded) {
+                hands.put(p, HandEvaluator.evaluate(p.getCards()));
+            }
+
+            // Sắp xếp giảm dần: mạnh nhất ở đầu
+            List<PlayerState> ranked = notFolded.stream()
+                    .sorted((a, b) -> comparator.compare(hands.get(b), hands.get(a)))
+                    .toList();
+
+            BigDecimal totalPot = state.getMainPot();
+
+            for (int i = 0; i < ranked.size(); i++) {
+                PlayerState p = ranked.get(i);
+                Hand h = hands.get(p);
+                int rank = i + 1;
+                BigDecimal profit;
+                String resultStr;
+
+                if (i == 0) {
+                    // Người thắng: nhận toàn pot - số đã bỏ
+                    profit = totalPot.subtract(p.getCurrentBet());
+                    resultStr = "WIN";
+                } else {
+                    // Người thua: âm số tiền đã bỏ
+                    profit = p.getCurrentBet().negate();
+                    resultStr = "LOSE";
+                }
+
+                results.add(new PlayerResult(
+                        p.getUserId(), "", "",
+                        h, h.type().name(),
+                        rank, resultStr, profit, p.getSeatNumber()));
+            }
+
+            // Thêm kết quả FOLD
+            for (PlayerState p : allPlayers) {
+                if (p.isFolded()) {
+                    results.add(new PlayerResult(
+                            p.getUserId(), "", "", null, null,
+                            0, "FOLD", p.getCurrentBet().negate(), p.getSeatNumber()));
+                }
+            }
+        }
+
+        return new RoundResult(
+                state.getRoundId(), state.getRoomId(), "FINISHED",
+                System.currentTimeMillis(), state.getBaseBetAmount(),
+                results, state.getBetHistory(), sidePots, null);
+    }
+
+    private RoundResult buildCancelledResult(GameState state) {
+        // Tất cả người chơi nhận lại tiền (profit = 0)
+        List<PlayerResult> results = state.getPlayers().values().stream()
+                .map(p -> new PlayerResult(
+                        p.getUserId(), "", "", null, null,
+                        0, "CANCELLED", BigDecimal.ZERO, p.getSeatNumber()))
+                .toList();
+
+        return new RoundResult(
+                state.getRoundId(), state.getRoomId(), "CANCELLED",
+                System.currentTimeMillis(), state.getBaseBetAmount(),
+                results, state.getBetHistory(), List.of(), state.getCancelReason());
     }
 
     // ═══ G05: RỜI BÀN (Sẽ triển khai hoàn thiện trong G05) ═══

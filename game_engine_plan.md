@@ -14,7 +14,7 @@
 | **G01** | Luật & Hợp Đồng Ghép | M0 | ✅ **HOÀN THÀNH** | — | [g01_engine_contract.md](file:///d:/Project/bacay-online/g01_engine_contract.md) |
 | **G02** | Khởi Tạo & Dữ Liệu Ván | M4.1 | ✅ **HOÀN THÀNH** | **P1** | [plan_g02.md](file:///d:/Project/bacay-online/plan_g02.md) |
 | **G03** | Xử Lý Hành Động (BettingEngine) | M4.1 | ✅ **HOÀN THÀNH** | **P1** | [plan_g03.md](file:///d:/Project/bacay-online/plan_g03.md) |
-| **G04** | Kết Quả & Vòng Đời (SidePot) | M4.1, M5.1 | ❌ Chưa bắt đầu | **P1** | [plan_g04.md](file:///d:/Project/bacay-online/plan_g04.md) |
+| **G04** | Kết Quả & Vòng Đời (SidePot) | M4.1, M5.1 | ✅ **HOÀN THÀNH** | **P1** | [plan_g04.md](file:///d:/Project/bacay-online/plan_g04.md) |
 | **G05** | Rời Ván & Snapshot | M4.2 | ❌ Chưa bắt đầu | **P2** | [plan_g05.md](file:///d:/Project/bacay-online/plan_g05.md) |
 | **G06** | Test Toàn Diện & API Cho Khánh | M4.1→M6 | ❌ Chưa bắt đầu | **Xuyên suốt** | [plan_g06.md](file:///d:/Project/bacay-online/plan_g06.md) |
 
