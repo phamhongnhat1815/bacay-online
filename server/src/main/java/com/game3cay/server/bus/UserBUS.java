@@ -23,7 +23,8 @@ import com.game3cay.shared.network.ErrorCode;
  *   <li>Hash mật khẩu bằng {@code PasswordUtil.hash()} trong {@code shared/security/}.</li>
  *   <li>Verify bằng {@code PasswordUtil.verify()} — không tự viết lại.</li>
  *   <li>Không trả về thông tin password_hash trong {@link UserDTO}.</li>
- *   <li>Các phương thức KHÔNG cần synchronized — JDBC connection pool tự quản.</li>
+ *   <li>Mỗi thao tác JDBC dùng connection riêng và đóng bằng try-with-resources.
+ *       UNIQUE username trong DB bảo vệ đăng ký đồng thời; chưa dùng connection pool.</li>
  * </ul>
  */
 public interface UserBUS {
