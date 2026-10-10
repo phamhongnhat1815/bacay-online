@@ -1,5 +1,6 @@
 package com.game3cay.server.game;
 
+import com.game3cay.server.game.engine.BettingEngine;
 import com.game3cay.server.game.engine.Deck;
 import com.game3cay.server.game.exception.GameException;
 import com.game3cay.server.game.model.GameState;
@@ -112,11 +113,12 @@ public class GameEngineImpl implements GameEngine {
         return state;
     }
 
-    // ═══ G03: TỐ & CƯỢC (Sẽ triển khai trong G03) ═══
+    // ═══ G03: TỐ & CƯỢC ═══
 
     @Override
     public void handleAction(long actorId, String roundId, BetAction action, BigDecimal raiseAmount) throws GameException {
-        throw new UnsupportedOperationException("handleAction sẽ được triển khai trong G03");
+        GameState state = getActiveGame(roundId);
+        new BettingEngine(state).handleAction(actorId, roundId, action, raiseAmount);
     }
 
     // ═══ G04: KẾT QUẢ VÁN & SO BÀI (Sẽ triển khai trong G04) ═══
@@ -126,7 +128,7 @@ public class GameEngineImpl implements GameEngine {
         throw new UnsupportedOperationException("finalizeRound sẽ được triển khai trong G04");
     }
 
-    // ═══ G05: RỜI BÀN & SNAPSHOTS (Sẽ triển khai hoàn thiện trong G05) ═══
+    // ═══ G05: RỜI BÀN (Sẽ triển khai hoàn thiện trong G05) ═══
 
     @Override
     public boolean handlePlayerLeft(String roundId, long userId) throws GameException {
