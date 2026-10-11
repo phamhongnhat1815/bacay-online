@@ -145,10 +145,19 @@ public class GameEngineImpl implements GameEngine {
         // IDEMPOTENT: Nếu đã chốt rồi → trả ngay kết quả cũ
         if (state.getFinalResult() != null) return state.getFinalResult();
 
-        // Chỉ chốt khi ván FINISHED hoặc CANCELLED
-        if (state.getPhase() != GamePhase.FINISHED && state.getPhase() != GamePhase.CANCELLED) {
+        // Chỉ chốt khi ván SHOWDOWN, FINISHED hoặc CANCELLED
+        // SHOWDOWN: tất cả còn lại đã bằng nhau → lật bài, Engine tự chuyển FINISHED
+        if (state.getPhase() != GamePhase.FINISHED
+                && state.getPhase() != GamePhase.SHOWDOWN
+                && state.getPhase() != GamePhase.CANCELLED) {
             throw new GameException(ErrorCode.INVALID_STATE, "Ván chưa kết thúc: " + roundId);
         }
+
+        // Nếu SHOWDOWN → chuyển FINISHED trước khi chốt kết quả
+        if (state.getPhase() == GamePhase.SHOWDOWN) {
+            state.setPhase(GamePhase.FINISHED);
+        }
+
 
         RoundResult result = (state.getPhase() == GamePhase.CANCELLED)
                 ? buildCancelledResult(state)
