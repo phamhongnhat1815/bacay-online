@@ -652,6 +652,7 @@ Server                  Client
 | Phiên bản | Ngày | Nội dung | Người thực hiện |
 |---|---|---|---|
 | 1.0 | 2026-09-25 | Tạo ban đầu — đủ 9 nhóm thông điệp, payload chi tiết, 5 luồng chính | Khánh |
+| 1.1 | 2026-10-13 | M3: `betAmount` tuỳ chọn (null = không đặt cược); thêm `checkStart` vào `RoomService`; sửa `RoomSnapshot.status` dùng `r.state` động thay vì hardcode "WAITING"; thêm kiểm tra `ROOM_NOT_WAITING` khi join; sửa `PlayerSlot.status` thành "ACTIVE" | Khánh |
 
 > Mọi thay đổi payload hoặc PacketType phải thêm dòng vào bảng này và cập nhật `PROTOCOL_VERSION` trong `Packet.java` nếu breaking change.
 

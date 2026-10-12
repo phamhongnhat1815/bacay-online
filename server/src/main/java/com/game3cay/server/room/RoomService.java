@@ -25,5 +25,8 @@ public interface RoomService {
 
     void chat(long userId, String content) throws BUSException;
 
+    /** Kiểm tra điều kiện bắt đầu ván; ném BUSException nếu không đủ. Engine thuộc M4. */
+    void checkStart(long userId) throws BUSException;
+
     void onDisconnected(long userId);
 }
