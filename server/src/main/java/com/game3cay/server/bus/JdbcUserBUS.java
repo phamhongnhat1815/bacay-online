@@ -1,11 +1,14 @@
 package com.game3cay.server.bus;
 
-import com.game3cay.server.dal.*;
-import com.game3cay.shared.network.ErrorCode;
-import com.game3cay.shared.security.PasswordUtil;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Locale;
+
+import com.game3cay.server.dal.ConnectionProvider;
+import com.game3cay.server.dal.DatabaseConfig;
+import com.game3cay.server.dal.UserDAO;
+import com.game3cay.shared.network.ErrorCode;
+import com.game3cay.shared.security.PasswordUtil;
 
 /** Phần tài khoản M2 của Nhật. Có thể tạo một instance chung cho các handler. */
 public final class JdbcUserBUS implements UserBUS {
@@ -34,10 +37,21 @@ public final class JdbcUserBUS implements UserBUS {
         try {
             return users.insert(normalized, PasswordUtil.hash(rawPassword), name, mail);
         } catch (SQLException e) {
-            // UNIQUE trong DB là điểm quyết định, kể cả hai request đăng ký đồng thời.
             if (e.getErrorCode() == 1062 || "23505".equals(e.getSQLState())) {
-                throw new BUSException(ErrorCode.USERNAME_EXISTS, "Tên đăng nhập đã tồn tại");
+                try {
+                    if (users.findByUsername(normalized) != null) {
+                        throw new BUSException(
+                                ErrorCode.USERNAME_EXISTS,
+                                "Tên đăng nhập đã tồn tại"
+                        );
+                    }
+                } catch (SQLException lookupError) {
+                    throw databaseError(lookupError);
+                }
+
+                throw invalid("Email đã được sử dụng");
             }
+
             throw databaseError(e);
         }
     }

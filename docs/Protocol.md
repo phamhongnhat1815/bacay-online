@@ -654,3 +654,28 @@ Server                  Client
 | 1.0 | 2026-09-25 | Tạo ban đầu — đủ 9 nhóm thông điệp, payload chi tiết, 5 luồng chính | Khánh |
 
 > Mọi thay đổi payload hoặc PacketType phải thêm dòng vào bảng này và cập nhật `PROTOCOL_VERSION` trong `Packet.java` nếu breaking change.
+
+## Quy ước bản ghép M1–M3
+
+- Packet.VERSION là số nguyên 1 theo code nền.
+- shared/server/client phải được build và cập nhật cùng bản.
+- REGISTER: AUTH_RESULT; không tự đăng nhập.
+- LOGIN: gắn phiên trước AUTH_RESULT; lỗi nghiệp vụ trả ERROR.
+- LOGOUT: dọn phòng và phiên rồi ACK; giữ socket mở.
+- ROOM_LIST: ROOM_LIST_RESULT.
+- CREATE_ROOM/JOIN_ROOM/SET_READY:
+  phản hồi ROOM_UPDATED giữ requestId;
+  broadcast ROOM_UPDATED dùng requestId null.
+- LEAVE_ROOM: ACK; cập nhật và thông báo cho người còn lại.
+- Client gửi CHAT_MESSAGE bằng ChatMessage TEXT.
+- Server phát CHAT_MESSAGE/CHAT_SYSTEM bằng RoomChatEvent(roomId, message).
+- Server xác định người gửi, tên, phòng và thời gian.
+- Chat thành công có ACK riêng cho người gửi.
+- Chat tối đa 500 ký tự, 5 tin/10 giây/user.
+- Request chat giới hạn cấu trúc 2000 ký tự;
+  quá 500 trả MESSAGE_TOO_LONG từ nghiệp vụ.
+- Client bỏ snapshot cũ theo roomId/stateVersion.
+- Chủ phòng rời: chuyển cho người còn lại vào sớm nhất.
+- Phòng trống bị xóa; phòng M3 được giữ trong RAM.
+- START_GAME_REQUEST kiểm tra quyền và sẵn sàng;
+  chưa ghép Engine M4 thì trả NOT_IMPLEMENTED.

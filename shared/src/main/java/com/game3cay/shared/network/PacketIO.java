@@ -1,9 +1,21 @@
 package com.game3cay.shared.network;
 
-import com.game3cay.shared.model.*;
-import java.io.*;
+import java.io.IOException;
+import java.io.ObjectInputFilter;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.List;
+
+import com.game3cay.shared.model.AuthRequest;
+import com.game3cay.shared.model.AuthResult;
+import com.game3cay.shared.model.ChatMessage;
+import com.game3cay.shared.model.CreateRoomRequest;
+import com.game3cay.shared.model.JoinRoomRequest;
+import com.game3cay.shared.model.RegisterRequest;
+import com.game3cay.shared.model.RoomChatEvent;
+import com.game3cay.shared.model.RoomSnapshot;
+import com.game3cay.shared.model.RoomSummary;
 
 public final class PacketIO {
     private PacketIO() {}
@@ -31,6 +43,7 @@ public final class PacketIO {
 
     public static Packet read(ObjectInputStream input)
             throws IOException, ClassNotFoundException {
+
         if (!(input.readObject() instanceof Packet packet)) {
             throw new IOException("Dữ liệu không phải Packet");
         }
@@ -41,6 +54,7 @@ public final class PacketIO {
 
     public static void write(ObjectOutputStream output, Packet packet)
             throws IOException {
+
         validate(packet);
 
         synchronized (output) {
@@ -64,6 +78,7 @@ public final class PacketIO {
                 || packet.getProtocolVersion() != Packet.VERSION
                 || (packet.getRequestId() != null
                     && !text(packet.getRequestId(), 64))) {
+
             throw new IOException("Packet sai định dạng hoặc phiên bản");
         }
 
@@ -97,7 +112,8 @@ public final class PacketIO {
 
             case ERROR ->
                 data instanceof Packet.ErrorPayload e
-                && e.code() != null && text(e.message(), 500);
+                && e.code() != null
+                && text(e.message(), 500);
 
             case CREATE_ROOM ->
                 data instanceof CreateRoomRequest r
@@ -119,19 +135,30 @@ public final class PacketIO {
 
             case ROOM_UPDATED ->
                 data instanceof RoomSnapshot r
-                && r.players() != null && r.players().size() <= 8;
+                && r.players() != null
+                && r.players().size() <= 8;
 
             case ROOM_LIST_RESULT ->
                 data instanceof List<?> list
                 && list.size() <= 100
                 && list.stream().allMatch(RoomSummary.class::isInstance);
 
-            case CHAT_MESSAGE, CHAT_SYSTEM ->
+            case CHAT_MESSAGE ->
+                // Cho request tới handler để trả mã lỗi nghiệp vụ nếu >500.
                 data instanceof ChatMessage c
-                && text(c.content(), 500)
-                && ("TEXT".equals(c.type())
-                    || "EMOJI".equals(c.type())
-                    || "SYSTEM".equals(c.type()));
+                    && c.content() != null
+                    && c.content().length() <= 2000
+                    && ("TEXT".equals(c.type())
+                        || "EMOJI".equals(c.type())
+                        || "SYSTEM".equals(c.type()))
+                || data instanceof RoomChatEvent e
+                    && validChatEvent(e)
+                    && "TEXT".equals(e.message().type());
+
+            case CHAT_SYSTEM ->
+                data instanceof RoomChatEvent e
+                && validChatEvent(e)
+                && "SYSTEM".equals(e.message().type());
 
             default -> false;
         };
@@ -141,5 +168,19 @@ public final class PacketIO {
                     "Payload không hợp lệ cho " + packet.getType()
             );
         }
+    }
+
+    private static boolean validChatEvent(RoomChatEvent event) {
+        ChatMessage c = event.message();
+
+        return event.roomId() > 0
+                && c != null
+                && text(c.content(), 500)
+                && c.timestampMillis() > 0
+                && ("SYSTEM".equals(c.type())
+                    || "TEXT".equals(c.type())
+                        && c.senderId() != null
+                        && c.senderId() > 0
+                        && text(c.senderDisplayName(), 100));
     }
 }

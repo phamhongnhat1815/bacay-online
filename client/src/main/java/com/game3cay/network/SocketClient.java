@@ -40,13 +40,10 @@ public final class SocketClient {
             0L,
             TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(32),
-            task -> daemon(task, "client-sender")
-    );
+            task -> daemon(task, "client-sender"));
 
-    private final ScheduledExecutorService heartbeat =
-            Executors.newSingleThreadScheduledExecutor(
-                    task -> daemon(task, "client-heartbeat")
-            );
+    private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(
+            task -> daemon(task, "client-heartbeat"));
 
     private volatile boolean connected;
     private volatile long lastReceivedNanos;
@@ -61,8 +58,7 @@ public final class SocketClient {
     public void connect(String host, int port) {
         if (!started.compareAndSet(false, true)) {
             throw new IllegalStateException(
-                    "Mỗi SocketClient chỉ dùng cho một kết nối."
-            );
+                    "Mỗi SocketClient chỉ dùng cho một kết nối.");
         }
 
         try {
@@ -76,8 +72,7 @@ public final class SocketClient {
         try {
             socket.connect(
                     new InetSocketAddress(host, port),
-                    CONNECT_TIMEOUT_MS
-            );
+                    CONNECT_TIMEOUT_MS);
 
             // Giới hạn thời gian chờ header Object Stream.
             socket.setSoTimeout(HEADER_TIMEOUT_MS);
@@ -107,8 +102,7 @@ public final class SocketClient {
                     this::checkHeartbeat,
                     HEARTBEAT_SECONDS,
                     HEARTBEAT_SECONDS,
-                    TimeUnit.SECONDS
-            );
+                    TimeUnit.SECONDS);
 
         } catch (IOException | RuntimeException e) {
             close("Kết nối thất bại: " + e.getMessage());
@@ -148,12 +142,15 @@ public final class SocketClient {
                 lastReceivedNanos = System.nanoTime();
 
                 if (packet.getType() == PacketType.PING) {
-                    // Hỗ trợ trường hợp server chủ động gửi heartbeat.
-                    send(new Packet(
+                    if (!send(new Packet(
                             PacketType.PONG,
                             packet.getRequestId(),
-                            packet.getData()
-                    ));
+                            packet.getData()))) {
+                        close("Không xếp được PONG vào hàng đợi.");
+                        return;
+                    }
+
+                    listener.onPacketReceived(this, packet);
                 } else {
                     listener.onPacketReceived(this, packet);
                 }
