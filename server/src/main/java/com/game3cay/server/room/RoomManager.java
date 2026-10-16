@@ -49,6 +49,8 @@ public final class RoomManager implements RoomService {
 
         long owner;
         long version;
+        /** Trạng thái phòng: WAITING / PLAYING / FINISHED */
+        String state = "WAITING";
 
         Room(
                 long id,
@@ -74,7 +76,7 @@ public final class RoomManager implements RoomService {
                     r.id,
                     "R" + r.id,
                     r.settings.roomName(),
-                    "WAITING",
+                    r.state,
                     r.members.size(),
                     r.settings.maxPlayers(),
                     r.settings.betAmount()
@@ -103,16 +105,24 @@ public final class RoomManager implements RoomService {
                 || request.roomName().length() > 100
                 || request.minPlayers() < 2
                 || request.maxPlayers() < request.minPlayers()
-                || request.maxPlayers() > 8
-                || request.betAmount() == null
-                || request.betAmount().signum() <= 0
-                || request.betAmount().precision() > 15
-                || request.betAmount().scale() < 0
-                || request.betAmount().scale() > 2) {
+                || request.maxPlayers() > 8) {
 
             throw fail(
                     ErrorCode.INVALID_REQUEST,
                     "Thông tin tạo phòng không hợp lệ"
+            );
+        }
+
+        // betAmount tuỳ chọn — game hiện tại không bắt buộc đặt cược.
+        if (request.betAmount() != null
+                && (request.betAmount().signum() < 0
+                    || request.betAmount().precision() > 15
+                    || request.betAmount().scale() < 0
+                    || request.betAmount().scale() > 2)) {
+
+            throw fail(
+                    ErrorCode.INVALID_REQUEST,
+                    "betAmount không hợp lệ"
             );
         }
 
@@ -135,6 +145,13 @@ public final class RoomManager implements RoomService {
             throw fail(
                     ErrorCode.ROOM_NOT_FOUND,
                     "Phòng không còn tồn tại"
+            );
+        }
+
+        if (!"WAITING".equals(r.state)) {
+            throw fail(
+                    ErrorCode.ROOM_NOT_WAITING,
+                    "Phòng đang trong trận, không thể vào"
             );
         }
 
@@ -372,7 +389,7 @@ public final class RoomManager implements RoomService {
                     m.user.displayName(),
                     m.seat,
                     m.ready,
-                    "PLAYING"
+                    "ACTIVE"   // đang ngồi trong phòng chờ
             ));
         }
 
@@ -380,7 +397,7 @@ public final class RoomManager implements RoomService {
                 r.id,
                 "R" + r.id,
                 r.settings.roomName(),
-                "WAITING",
+                r.state,   // dùng state thực, không hardcode "WAITING"
                 r.owner,
                 r.settings.minPlayers(),
                 r.settings.maxPlayers(),
