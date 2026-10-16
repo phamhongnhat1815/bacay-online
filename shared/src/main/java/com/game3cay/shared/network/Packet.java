@@ -43,4 +43,36 @@ public final class Packet implements Serializable {
             implements java.io.Serializable {
         private static final long serialVersionUID = 1L;
     }
+    public Packet(PacketType type, Object data) {
+        this(type, UUID.randomUUID().toString(), data);
+    }
+
+    public static Packet serverPush(PacketType type, Object data) {
+        return new Packet(type, null, data);
+    }
+
+    public static Packet ack(String requestId) {
+        return new Packet(PacketType.ACK, requestId, null);
+    }
+
+    public static Packet error(
+            String requestId,
+            ErrorCode code,
+            String message
+    ) {
+        return new Packet(
+                PacketType.ERROR,
+                requestId,
+                new ErrorPayload(code, message)
+        );
+    }
+
+    public <T> T getDataAs(Class<T> clazz) {
+        return clazz.cast(data);
+    }
+
+    @Override
+    public String toString() {
+        return "Packet{type=" + type + ", requestId=" + requestId + "}";
+    }
 }

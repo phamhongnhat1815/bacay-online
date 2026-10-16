@@ -284,13 +284,13 @@ Nhiều mức ALL_IN khác nhau → tính **side pot**: mỗi side pot chỉ nh�
 ```
 bacay-online/                     ← Parent Maven (pom.xml)
 ├── shared/                       ← Module dùng chung
-│   └── src/main/java/com/bacay/shared/
+│   └── src/main/java/com/game3cay/shared/
 │       ├── network/              (Packet, PacketType, ErrorCode)
 │       ├── model/                (Card, Hand, RoomSnapshot, ...)
 │       └── security/             (PasswordUtil)
 ├── server/                       ← Module server
-│   └── src/main/java/com/bacay/server/
-│       ├── RunServer.java
+│   └── src/main/java/com/game3cay/server/
+│       ├── ServerApplication.java
 │       ├── network/              (ClientHandler, SessionManager, HeartbeatManager)
 │       ├── room/                 (RoomManager, ChatManager)
 │       ├── game/                 (GameEngine, BettingEngine, SidePotCalculator,
@@ -299,7 +299,7 @@ bacay-online/                     ← Parent Maven (pom.xml)
 │       └── dal/                  (UserDAL, RoomDAL, GameDAL, BetDAL,
 │                                  TransactionDAL, ChatDAL, DbConnector)
 ├── client/                       ← Module client
-│   └── src/main/java/com/bacay/client/
+│   └── src/main/java/com/game3cay/
 │       ├── RunClient.java
 │       ├── controller/           (SocketHandler)
 │       └── view/                 (LoginFrame, RegisterFrame, LobbyFrame,

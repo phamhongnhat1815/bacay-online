@@ -114,15 +114,15 @@ public final class RoomManager implements RoomService {
         }
 
         // betAmount tuỳ chọn — game hiện tại không bắt buộc đặt cược.
-        if (request.betAmount() != null
-                && (request.betAmount().signum() < 0
-                    || request.betAmount().precision() > 15
-                    || request.betAmount().scale() < 0
-                    || request.betAmount().scale() > 2)) {
+        if (request.betAmount() == null
+                || request.betAmount().signum() <= 0
+                || request.betAmount().precision() > 15
+                || request.betAmount().scale() < 0
+                || request.betAmount().scale() > 2) {
 
             throw fail(
                     ErrorCode.INVALID_REQUEST,
-                    "betAmount không hợp lệ"
+                    "Điểm cơ bản phải lớn hơn 0, tối đa 2 số thập phân"
             );
         }
 
@@ -389,7 +389,7 @@ public final class RoomManager implements RoomService {
                     m.user.displayName(),
                     m.seat,
                     m.ready,
-                    "ACTIVE"   // đang ngồi trong phòng chờ
+                    "PLAYING"   // đang ngồi trong phòng chờ
             ));
         }
 
