@@ -1,177 +1,224 @@
 package com.game3cay.gui;
 
-import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.GridLayout;
-import java.util.List;
-
-import javax.swing.BorderFactory;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JSpinner;
-import javax.swing.JTable;
-import javax.swing.JTextField;
-import javax.swing.ListSelectionModel;
-import javax.swing.SpinnerNumberModel;
-import javax.swing.table.DefaultTableModel;
-
 import com.game3cay.shared.model.RoomSummary;
+import java.awt.*;
+import java.util.*;
+import java.util.List;
+import java.util.function.LongConsumer;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 
+/** Exactly twenty server-owned tables, in stable numeric order. */
 public final class LobbyPanel extends JPanel {
-    private final DefaultTableModel model = new DefaultTableModel(
-            new String[]{
-                "ID", "Mã", "Tên phòng", "Trạng thái",
-                "Người", "Điểm cơ bản"
-            }, 0
-    ) {
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
+  private final TableCard[] tables = new TableCard[20];
+  private final JLabel summary = Theme.label("Đang tải bàn chơi…", 14, Theme.MUTED);
+  private LongConsumer join = id -> {};
+  private boolean actions;
 
-        @Override
-        public Class<?> getColumnClass(int column) {
-            return column == 0 ? Long.class
-                    : column == 5 ? java.math.BigDecimal.class
-                    : String.class;
-        }
-    };
+  public LobbyPanel() {
+    super(new BorderLayout(0, 18));
+    setOpaque(false);
+    setBorder(new EmptyBorder(24, 32, 18, 32));
+    var title = Theme.transparent(new BorderLayout());
+    var copy = Theme.transparent(new GridLayout(0, 1, 0, 7));
+    var eyebrow = Theme.label("SẢNH CHƠI / 20 BÀN", 11, Theme.GOLD);
+    eyebrow.setFont(Theme.font(11, true));
+    var h = Theme.label("Chọn bàn của bạn", 28, Theme.TEXT);
+    h.setFont(Theme.font(28, true));
+    copy.add(eyebrow);
+    copy.add(h);
+    copy.add(summary);
+    title.add(copy, BorderLayout.WEST);
+    var note = Theme.label("2–8 người / bàn     •     Chủ bàn chọn cược cơ bản", 13, Theme.MUTED);
+    title.add(note, BorderLayout.EAST);
+    add(title, BorderLayout.NORTH);
+    var grid = new TableGrid();
+    for (int i = 0; i < 20; i++) {
+      tables[i] = new TableCard(i + 1);
+      grid.add(tables[i]);
+    }
+    var scroll = new JScrollPane(grid);
+    scroll.setOpaque(false);
+    scroll.getViewport().setOpaque(false);
+    scroll.setBorder(null);
+    scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    scroll.getVerticalScrollBar().setUnitIncrement(24);
+    add(scroll, BorderLayout.CENTER);
+    var footer = Theme.transparent(new BorderLayout());
+    footer.add(
+        Theme.label(
+            "Chọn một bàn trống để mở cuộc chơi, hoặc vào bàn đang chờ để chơi cùng mọi người.",
+            13,
+            Theme.MUTED),
+        BorderLayout.WEST);
+    footer.add(Theme.label("● Có người    ○ Còn trống", 12, Theme.GOLD), BorderLayout.EAST);
+    add(footer, BorderLayout.SOUTH);
+  }
 
-    private final JTable table = new JTable(model);
-    private List<RoomSummary> rooms = List.of();
+  public void onJoin(LongConsumer action) {
+    join = action;
+  }
 
-    private final JLabel count =
-            new JLabel("Chưa tải danh sách phòng.");
+  public void setRooms(List<RoomSummary> rooms) {
+    var map = new HashMap<Long, RoomSummary>();
+    rooms.forEach(r -> map.put(r.roomId(), r));
+    int occupied = 0, people = 0;
+    for (int i = 0; i < 20; i++) {
+      var r = map.get((long) i + 1);
+      tables[i].data = r;
+      if (r != null) {
+        people += r.playerCount();
+        if (r.playerCount() > 0) occupied++;
+      }
+      tables[i].sync();
+    }
+    summary.setText(
+        people
+            + " người đang ngồi bàn  ·  "
+            + occupied
+            + " bàn có người  ·  "
+            + (20 - occupied)
+            + " bàn trống");
+  }
 
-    private final JTextField name = new JTextField(20);
-    private final JSpinner min =
-            new JSpinner(new SpinnerNumberModel(2, 2, 8, 1));
-    private final JSpinner max =
-            new JSpinner(new SpinnerNumberModel(8, 2, 8, 1));
-    private final JTextField points = new JTextField(10);
+  public void setActionsEnabled(boolean value) {
+    actions = value;
+    for (var t : tables) t.sync();
+  }
 
-    private final JButton refresh = new JButton("Tải danh sách");
-    private final JButton create = new JButton("Tạo phòng");
-    private final JButton join = new JButton("Vào phòng đã chọn");
+  private static String compactBet(java.math.BigDecimal amount) {
+    var thousand = new java.math.BigDecimal("1000");
+    var million = new java.math.BigDecimal("1000000");
+    var billion = new java.math.BigDecimal("1000000000");
+    if (amount.compareTo(billion) >= 0)
+      return Theme.points(amount.divide(billion, 1, java.math.RoundingMode.DOWN)) + " tỷ điểm";
+    if (amount.compareTo(million) >= 0)
+      return Theme.points(amount.divide(million, 1, java.math.RoundingMode.DOWN)) + "M điểm";
+    if (amount.compareTo(thousand) >= 0)
+      return Theme.points(amount.divide(thousand, 1, java.math.RoundingMode.DOWN)) + "K điểm";
+    return Theme.points(amount) + " điểm";
+  }
 
-    public LobbyPanel() {
-        super(new BorderLayout(8, 8));
-
-        table.setAutoCreateRowSorter(true);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        table.setFillsViewportHeight(true);
-        add(new JScrollPane(table), BorderLayout.CENTER);
-
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        top.add(refresh);
-        top.add(join);
-        top.add(count);
-        add(top, BorderLayout.NORTH);
-
-        JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
-        form.setBorder(BorderFactory.createTitledBorder("Tạo phòng"));
-
-        form.add(new JLabel("Tên phòng:"));
-        form.add(name);
-        form.add(new JLabel("Số người tối thiểu:"));
-        form.add(min);
-        form.add(new JLabel("Số người tối đa:"));
-        form.add(max);
-        form.add(new JLabel("Điểm cơ bản:"));
-        form.add(points);
-        form.add(new JLabel(""));
-        form.add(create);
-
-        add(form, BorderLayout.SOUTH);
-        setActionsEnabled(false);
+  private static final class TableGrid extends JPanel implements Scrollable {
+    TableGrid() {
+      super(new GridLayout(4, 5, 14, 14));
+      setOpaque(false);
     }
 
-    public void onRefresh(Runnable action) {
-        refresh.addActionListener(e -> action.run());
+    @Override
+    public Dimension getPreferredSize() {
+      return new Dimension(1000, 514);
     }
 
-    public void onCreate(Runnable action) {
-        create.addActionListener(e -> action.run());
+    public Dimension getPreferredScrollableViewportSize() {
+      return getPreferredSize();
     }
 
-    public void onJoin(Runnable action) {
-        join.addActionListener(e -> action.run());
+    public int getScrollableUnitIncrement(Rectangle r, int orientation, int direction) {
+      return 24;
     }
 
-    public String roomName() {
-        return name.getText().trim();
+    public int getScrollableBlockIncrement(Rectangle r, int orientation, int direction) {
+      return r.height - 24;
     }
 
-    public int minPlayers() {
-        return spinnerValue(min);
+    public boolean getScrollableTracksViewportWidth() {
+      return true;
     }
 
-    public int maxPlayers() {
-        return spinnerValue(max);
+    public boolean getScrollableTracksViewportHeight() {
+      return getParent() != null && getParent().getHeight() >= 514;
+    }
+  }
+
+  private final class TableCard extends JButton {
+    final int number;
+    RoomSummary data;
+
+    TableCard(int n) {
+      number = n;
+      setOpaque(false);
+      setBorderPainted(false);
+      setContentAreaFilled(false);
+      setFocusPainted(false);
+      setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+      setToolTipText("Vào bàn " + n);
+      getAccessibleContext().setAccessibleName("Bàn " + n);
+      addActionListener(
+          e -> {
+            Sound.play("button_click");
+            join.accept(number);
+          });
     }
 
-    public String pointText() {
-        return points.getText().trim();
+    void sync() {
+      setEnabled(
+          actions
+              && data != null
+              && "WAITING".equals(data.status())
+              && data.playerCount() < data.maxPlayers());
+      setToolTipText(
+          data == null
+              ? "Đang tải bàn " + number
+              : "Bàn "
+                  + number
+                  + " · Cược cơ bản "
+                  + Theme.points(data.betAmount())
+                  + " điểm / người");
+      repaint();
     }
 
-    private static int spinnerValue(JSpinner spinner) {
-        try {
-            spinner.commitEdit();
-            return (Integer) spinner.getValue();
-        } catch (java.text.ParseException e) {
-            throw new IllegalArgumentException(
-                    "Số người phải là số nguyên.", e
-            );
-        }
+    @Override
+    protected void paintComponent(Graphics gg) {
+      var g = (Graphics2D) gg.create();
+      Assets.quality(g);
+      int w = getWidth(), h = getHeight();
+      boolean hover = getModel().isRollover() && isEnabled();
+      g.setPaint(
+          new GradientPaint(0, 0, new Color(29, 53, 44, 245), w, h, new Color(8, 28, 24, 250)));
+      g.fillRoundRect(0, 0, w, h, 17, 17);
+      g.setColor(hover ? Theme.GOLD : new Color(97, 95, 62));
+      g.setStroke(new BasicStroke(hover ? 2f : 1f));
+      g.drawRoundRect(1, 1, w - 3, h - 3, 17, 17);
+      int n = data == null ? 0 : data.playerCount();
+      boolean playing = data != null && "PLAYING".equals(data.status());
+      boolean result = data != null && "RESULT".equals(data.status());
+      g.setFont(Theme.font(20, true));
+      g.setColor(Theme.TEXT);
+      g.drawString("Bàn " + String.format("%02d", number), 17, 31);
+      g.setFont(Theme.font(11, true));
+      String tag =
+          result ? "KẾT QUẢ" : playing ? "ĐANG CHƠI" : n == 8 ? "ĐÃ ĐẦY" : n > 0 ? "CÓ NGƯỜI" : "";
+      g.setColor(playing || result ? Theme.GOLD : Theme.GREEN);
+      g.drawString(tag, w - 15 - g.getFontMetrics().stringWidth(tag), 29);
+      int tw = Math.min(106, w / 2), th = Math.min(65, h - 60);
+      g.drawImage(Assets.get("table.png", 240), 14, 39, tw, th, null);
+      g.setFont(Theme.font(25, true));
+      g.setColor(n > 0 ? Theme.TEXT : Theme.MUTED);
+      g.drawString(n + "", w - 63, 70);
+      g.setFont(Theme.font(12, false));
+      g.setColor(Theme.MUTED);
+      g.drawString("/ 8", w - 43, 70);
+      for (int i = 0; i < 8; i++) {
+        g.setColor(i < n ? Theme.GREEN : new Color(58, 80, 63));
+        g.fillOval(w - 72 + (i % 4) * 12, 79 + (i / 4) * 12, 7, 7);
+      }
+      g.setColor(new Color(78, 93, 67));
+      g.drawLine(16, h - 34, w - 16, h - 34);
+      g.setFont(Theme.font(12, false));
+      g.setColor(Theme.GOLD);
+      g.drawString(data == null ? "—" : compactBet(data.betAmount()), 17, h - 13);
+      g.setColor(hover ? Theme.GOLD : Theme.MUTED);
+      String go =
+          data == null
+              ? "Đang tải…"
+              : playing || result ? "Chờ ván sau" : n == 8 ? "Đủ người" : "Vào bàn →";
+      g.drawString(go, w - 15 - g.getFontMetrics().stringWidth(go), h - 13);
+      if (hasFocus()) {
+        g.setColor(Theme.GOLD);
+        g.drawRoundRect(4, 4, w - 9, h - 9, 14, 14);
+      }
+      g.dispose();
     }
-
-    public long selectedRoomId() {
-        int selected = table.getSelectedRow();
-
-        return selected < 0 ? -1
-                : rooms.get(
-                        table.convertRowIndexToModel(selected)
-                ).roomId();
-    }
-
-    public void setRooms(List<RoomSummary> values) {
-        long selected = selectedRoomId();
-        rooms = List.copyOf(values);
-        model.setRowCount(0);
-
-        for (RoomSummary r : rooms) {
-            model.addRow(new Object[]{
-                r.roomId(),
-                r.roomCode(),
-                r.roomName(),
-                r.status(),
-                r.playerCount() + "/" + r.maxPlayers(),
-                r.betAmount()
-            });
-        }
-
-        count.setText(
-                rooms.isEmpty() ? "Chưa có phòng."
-                        : rooms.size() + " phòng"
-        );
-
-        for (int i = 0; i < rooms.size(); i++) {
-            if (rooms.get(i).roomId() == selected) {
-                int row = table.convertRowIndexToView(i);
-                table.setRowSelectionInterval(row, row);
-                break;
-            }
-        }
-    }
-
-    public void setActionsEnabled(boolean enabled) {
-        for (JComponent c : new JComponent[]{
-                table, name, min, max, points, refresh, create, join
-        }) {
-            c.setEnabled(enabled);
-        }
-    }
+  }
 }

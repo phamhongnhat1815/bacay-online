@@ -1,86 +1,86 @@
-# Ba Cây Online — Bài tập lớn Lập trình mạng
+# Ba Cây Online
 
-Dự án game Ba Cây nhiều người chơi, sử dụng kiến trúc client–server qua TCP Socket.
+Bản game Java Swing dùng bộ asset của nhóm, có đăng nhập/đăng ký, 20 bàn cố định, bài và lượt chơi trên bàn, chat, lịch sử, hồ sơ và bảng xếp hạng. Điểm dùng trong game là điểm giải trí.
 
-Bản hiện tại triển khai nền M1–M3: kết nối, tài khoản, lobby, phòng chờ và chat. Khởi tạo và chơi ván thật thuộc bước tích hợp M4.
+## Chạy ngay trên Windows
 
-## Công nghệ
+1. Cài **JDK 21** và **MySQL 8.0.16 trở lên**. Kiểm tra `java -version` trong PowerShell. Máy chỉ chơi client không cần MySQL.
+2. **Tắt server cũ.** Mở MySQL Workbench, đăng nhập MySQL bằng tài khoản của máy bạn, mở `database/setup.sql` rồi chạy **toàn bộ file** (nút tia sét / Ctrl+Shift+Enter). Chỉ cần file này; bỏ qua các hướng dẫn M1–M6 cũ. Database vẫn là `bacay_online`, giữ tài khoản và lịch sử đã có. Tài khoản cũ có 0 điểm được cấp 1.000 điểm một lần khi nâng cấp; tài khoản mới luôn có 1.000 điểm. Chạy lại SQL không cộng thêm điểm.
+3. Mở **Start-Server.cmd** ở thư mục gốc, nhập mật khẩu **MySQL** khi được hỏi. User mặc định `root`. Giữ cửa sổ này mở.
+4. Mở **Start-Client.cmd**. Đăng ký hoặc đăng nhập bằng **tài khoản game**. Đăng ký xong tự vào sảnh. Mật khẩu MySQL chỉ nhập ở cửa sổ server.
 
-- Java 21, Maven và Maven Wrapper.
-- Client: Java Swing.
-- Server: Java TCP Socket.
-- Giao thức: `Packet` qua `ObjectInputStream` và `ObjectOutputStream`, đọc/ghi thông qua `PacketIO`.
-- Tài khoản: MySQL/JDBC; mật khẩu được hash bằng PBKDF2WithHmacSHA256.
-- Kiểm thử BUS: JUnit 5 và H2 ở chế độ MySQL.
+Gói có sẵn `dist/client.jar`, `dist/server.jar`, `dist/shared.jar` và MySQL JDBC driver. **Không cần build hay chạy công cụ thử kết nối để chơi.** Nên giải nén sang một thư mục mới, ví dụ `C:\Games\bacay-online`, để tránh dùng lẫn JAR của bản trước.
 
-## Cấu trúc dự án
+## Vào chơi
 
-Dự án gồm ba module Maven:
+- Sảnh luôn có **Bàn 1 → Bàn 20**, theo đúng thứ tự. Bàn có người hiện số người, bàn đang chơi hoặc đầy sẽ tạm khóa nút vào. Trạng thái tự cập nhật.
+- Bấm vào một bàn đang chờ. Người vào đầu tiên làm chủ bàn; khi chủ bàn rời đi, người còn lại được chuyển quyền.
+- Mọi người bấm **Sẵn sàng**. Cần ít nhất 2 người đủ 10 điểm; chủ bàn bấm **Bắt đầu**. Mỗi bàn tối đa 8 người.
+- Bạn nhận 3 lá, hiển thị phía dưới. Bài của người khác úp trên mặt bàn. Khi kết thúc, các bài được phép công khai mới lật lên.
+- Đến lượt chọn **Kiểm tra / Theo**, **Tố đến**, **Úp bài** hoặc **Tất tay**. “Tố đến” là **tổng điểm bạn góp trong ván**, gồm cả điểm cơ bản. Hết 30 giây sẽ tự úp bài.
+- Header luôn hiện điểm của bạn. Kết quả ghi lịch sử và bảng xếp hạng. Bấm **Sẵn sàng** để chơi ván tiếp theo.
+- Có thể bật/tắt âm thanh, ẩn/hiện bài trên máy mình, xem luật, hồ sơ và đổi mật khẩu. Rời bàn mới sửa được tên/email.
 
-| Module | Vai trò | Thành phần chính |
-|---|---|---|
-| `shared` | Hợp đồng dữ liệu dùng chung | `Packet`, `PacketType`, `ErrorCode`, `PacketIO` và các DTO |
-| `server` | Kết nối, tài khoản, phiên và phòng | `ServerApplication`, `ClientHandler`, `SessionRegistry`, `JdbcUserBUS`, `RoomManager` |
-| `client` | Giao diện và kết nối phía người chơi | `RunClient`, `ConnectionController`, `MainFrame`, `LobbyPanel`, `RoomPanel`, `SocketClient` |
+Mở hai client và dùng hai tài khoản khác nhau để chơi trên cùng máy. Một tài khoản chỉ đăng nhập một nơi. Game có luật Sáp > Liêng > Bồ đội > Điểm như yêu cầu của nhóm; chi tiết ở `Game_Rules.md` và nút **Luật chơi**.
 
-Điểm khởi chạy:
+## Chơi trong cùng Wi-Fi / LAN
 
-- Server: `com.game3cay.server.ServerApplication`.
-- Client: `com.game3cay.RunClient`.
-- `shared` là thư viện dùng chung, không có chương trình khởi chạy riêng.
+- Chỉ một máy chạy MySQL và server. Cho phép Java/server qua Windows Firewall trên mạng riêng, TCP cổng **8888**.
+- Xem IPv4 của máy server bằng `ipconfig`.
+- Trên máy khác, mở client, bấm **Máy chủ** ở màn đăng nhập, nhập IPv4 máy server và cổng `8888`, lưu rồi đăng nhập. Máy client dùng bộ `dist` và JDK 21.
+- Cũng có thể chạy `Start-Client.cmd 192.168.1.10 8888` để đặt địa chỉ cho lần chạy đó.
+- Đây là cấu hình dành cho máy cá nhân/LAN của nhóm. Server TCP hiện tại chưa dùng TLS; triển khai qua Internet cần bổ sung TLS và cấu hình vận hành phù hợp.
 
-## Chức năng hiện tại
+## Cấu hình máy chủ
 
-| Mốc | Phần đã triển khai |
+`Start-Server.cmd` mặc định dùng MySQL `localhost:3306`, database `bacay_online`, user `root`. Mật khẩu được hỏi lúc chạy, không ghi trong source.
+
+Ví dụ dùng MySQL user khác:
+
+```powershell
+.\Start-Server.cmd -DbUser bacay_app
+```
+
+Đổi cổng game / URL MySQL:
+
+```powershell
+.\Start-Server.cmd -Port 8889 -DbUser bacay_app -DbUrl 'jdbc:mysql://localhost:3306/bacay_online?connectTimeout=5000&socketTimeout=10000&connectionTimeZone=UTC'
+```
+
+Đổi cổng tương ứng ở client. Nếu MySQL báo `Public Key Retrieval is not allowed`, cấu hình MySQL có TLS hoặc, với MySQL trên localhost/LAN tin cậy, thêm `&allowPublicKeyRetrieval=true` vào URL. Mặc định dùng thông số phù hợp MySQL cục bộ để chạy ngay.
+
+Nếu server không mở: kiểm tra MySQL đã chạy, đã chạy trọn `setup.sql`, mật khẩu MySQL đúng, JDK 21 nằm trong PATH và cổng 8888 chưa bị bản server cũ chiếm. Đóng bản cũ trước khi mở bản mới.
+
+## Source và build lại
+
+| Thư mục / file | Nội dung |
 |---|---|
-| M1 | Kết nối TCP, SERVER_NOTICE, ECHO/ACK, heartbeat PING/PONG và xử lý mất kết nối |
-| M2 | Đăng ký, đăng nhập, đăng xuất, gọi BUS/JDBC và quản lý phiên online |
-| M3.1 | Danh sách phòng, tạo/vào/rời phòng, sẵn sàng, kiểm tra quyền chủ phòng và chuyển chủ phòng |
-| M3.2 | Chat đúng phòng, thông báo vào/rời, giới hạn 500 ký tự và 5 tin trong 10 giây |
+| `client/` | Toàn bộ giao diện Swing, asset, âm thanh và kết nối client |
+| `server/` | Tài khoản, 20 bàn, luật game, xử lý lượt và lưu MySQL |
+| `shared/` | Các kiểu dữ liệu và giao thức chung |
+| `database/setup.sql` | Một file cài mới hoặc nâng cấp database |
+| `dist/` | JAR đã build và các file chạy sẵn |
+| `scripts/` | Script build / chạy Windows |
+| `docs/Architecture.md` | Luồng dữ liệu và vị trí sửa các phần chính |
 
-Phòng hiện được quản lý trong RAM. Phòng trống bị xóa.
-
-`START_GAME_REQUEST` kiểm tra chủ phòng, số người và trạng thái sẵn sàng. Khi chưa ghép engine M4, server trả `NOT_IMPLEMENTED`.
-
-Các chức năng cập nhật hồ sơ, đổi mật khẩu, cập nhật số dư, lưu kết quả, lịch sử và bảng xếp hạng chưa được triển khai trong bản M1–M3.
-
-## Cấu hình và chạy
-
-Dùng JDK 21. Khởi tạo MySQL và đặt các biến môi trường theo `docs/Database.md`:
-
-- `BACAY_DB_URL`
-- `BACAY_DB_USER`
-- `BACAY_DB_PASSWORD`
-
-Đặt biến trong terminal khởi chạy server. `database.env.example` là cấu hình mẫu; chương trình không tự đọc file `.env`. TCP server hiện không sử dụng `application.yaml`.
-
-Chạy từ thư mục gốc dự án bằng PowerShell:
+Muốn chỉnh code: mở **thư mục gốc có `pom.xml`** bằng IntelliJ IDEA, chọn JDK 21 và import Maven. Sửa xong chạy **Build.cmd** để build/test và cập nhật `dist`; sau đó mở lại server/client. Lần build đầu cần Internet để Maven Wrapper tải dependencies. Build chỉ dùng thông tin test riêng, không tự sửa database đang chơi.
 
 ```powershell
-.\server\mvnw.cmd -f .\pom.xml clean install
-.\server\mvnw.cmd -f .\server\pom.xml dependency:copy-dependencies
-
-java -cp 'server\target\classes;shared\target\classes;server\target\dependency\*' com.game3cay.server.ServerApplication
+.\Build.cmd
 ```
 
-Server mặc định nghe cổng `8888`.
+Hoặc trên Linux/macOS:
 
-Mở terminal khác để chạy client:
-
-```powershell
-java -cp 'client\target\classes;shared\target\classes' com.game3cay.RunClient
+```bash
+bash server/mvnw -f pom.xml clean install
 ```
 
-Có thể mở nhiều client để kiểm tra phòng và chat.
+Chạy bằng IntelliJ: `com.game3cay.server.ServerApplication` (module server, thiết lập `BACAY_DB_USER`, `BACAY_DB_PASSWORD`, tùy chọn `BACAY_DB_URL`) và `com.game3cay.RunClient` (module client). Client không có thông tin đăng nhập MySQL.
 
-## Kiểm thử trước khi tích hợp
+## Lưu dữ liệu
 
-```powershell
-.\server\mvnw.cmd -f .\pom.xml clean verify
-```
+Kết quả được ghi transaction vào các bảng `play_*`, chống ghi trùng theo ván. Server giữ kết quả đang chờ trong `dist/data/pending-results` và thử ghi lại nếu MySQL tạm ngắt. Giữ thư mục này khi chuyển bản cài có kết quả chưa lưu. Điểm chưa ghi xong sẽ bị khóa cho đến khi lưu thành công.
 
-Kiểm thử BUS bằng H2 không thay thế nghiệm thu với MySQL thật.
+Nên dừng server khi không có ván đang chơi. Nếu dừng giữa ván, ván đang diễn ra không có kết quả và không trừ điểm trong MySQL; các ván đã chốt kết quả được khôi phục từ hàng chờ khi mở lại. Không chạy hai server cùng database/thư mục dữ liệu.
 
-Nghiệm thu M1–M3 cần thử nhiều client: đăng ký/đăng nhập, chống đăng nhập trùng, phòng và sẵn sàng, chat hai phòng độc lập, chuyển chủ phòng và dọn trạng thái khi mất kết nối.
-
-Client, server và shared phải được build từ cùng bản mã nguồn. Quy ước giao tiếp hiện tại nằm trong mục “Quy ước bản ghép M1–M3” của `docs/Protocol.md`.
+Asset hình ảnh và âm thanh được lấy từ `bacay-assets-room.zip` do nhóm cung cấp. Các màn hình tham khảo trong asset không được dùng thay cho giao diện tương tác.

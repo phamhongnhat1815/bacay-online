@@ -1,868 +1,503 @@
 package com.game3cay.controller;
 
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import com.game3cay.gui.*;
+import com.game3cay.network.*;
+import com.game3cay.shared.model.*;
+import com.game3cay.shared.network.*;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
-
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.Timer;
 
-import com.game3cay.gui.MainFrame;
-import com.game3cay.network.PacketListener;
-import com.game3cay.network.SocketClient;
-import com.game3cay.shared.model.AuthRequest;
-import com.game3cay.shared.model.AuthResult;
-import com.game3cay.shared.model.ChatMessage;
-import com.game3cay.shared.model.CreateRoomRequest;
-import com.game3cay.shared.model.JoinRoomRequest;
-import com.game3cay.shared.model.RegisterRequest;
-import com.game3cay.shared.model.RoomChatEvent;
-import com.game3cay.shared.model.RoomSnapshot;
-import com.game3cay.shared.model.RoomSummary;
-import com.game3cay.shared.network.ErrorCode;
-import com.game3cay.shared.network.Packet;
-import com.game3cay.shared.network.PacketType;
-
+/** EDT owns presentation state; SocketClient owns all socket I/O. */
 public final class ConnectionController implements PacketListener {
-    private final MainFrame view;
-    private final Timer responseTimeout;
-    private final Timer maintenance;
+  private final MainFrame view;
+  private final Timer timeout, maintenance;
+  private SocketClient client;
+  private AuthResult user;
+  private RoomSnapshot room;
 
-    private final Map<String, Long> echoes = new HashMap<>();
-    private final List<RoomChatEvent> enteringChat = new ArrayList<>();
+  private record Pending(String id, PacketType type, long roomId, boolean silent) {}
 
-    private SocketClient client;
-    private AuthResult user;
-    private RoomSnapshot room;
+  private Pending pending;
+  private Packet queuedAuth;
+  private AuthRequest afterRegister;
+  private String connectedHost;
+  private int connectedPort;
+  private boolean closing;
+  private long lastRooms, lastProfile;
+  private DataDialog dataDialog;
+  private final List<RoomChatEvent> enteringChat = new ArrayList<>();
 
-    private record PendingRequest(
-            String id,
-            PacketType type,
-            long roomId
-    ) {}
-
-    private PendingRequest pending;
-    private long lastRoomList;
-    private boolean closing;
-    private int testNumber;
-
-    public ConnectionController(MainFrame view) {
-        this.view = view;
-
-        responseTimeout = new Timer(10000, e -> disconnect(
-                "Hết thời gian chờ phản hồi. "
-                + "Kết nối và đăng nhập lại để đồng bộ trạng thái."
-        ));
-        responseTimeout.setRepeats(false);
-
-        maintenance = new Timer(1000, e -> maintain());
-        maintenance.start();
-
-        view.onConnect(this::connect);
-        view.onDisconnect(() -> disconnect("Đã ngắt kết nối."));
-        view.onSend(this::sendTest);
-        view.onSubmit(this::submitAuth);
-
-        view.onLogout(() -> {
-            if (user != null) {
-                request(PacketType.LOGOUT, null);
-            }
+  public ConnectionController(MainFrame view) {
+    this.view = view;
+    timeout =
+        new Timer(
+            12000, e -> disconnect("Game chưa phản hồi. Vui lòng đăng nhập lại để tiếp tục."));
+    timeout.setRepeats(false);
+    maintenance = new Timer(1000, e -> maintain());
+    maintenance.start();
+    view.onSubmit(this::submitAuth);
+    view.onLogout(
+        () -> {
+          if (view.confirmLeave()) request(PacketType.LOGOUT, null);
         });
-
-        view.lobby().onRefresh(this::loadRooms);
-        view.lobby().onCreate(this::createRoom);
-        view.lobby().onJoin(this::joinRoom);
-
-        view.room().onLeave(() -> {
-            if (room != null) {
-                request(PacketType.LEAVE_ROOM, null);
-            }
+    view.lobby()
+        .onJoin(
+            id -> {
+              if (user != null && room == null)
+                request(PacketType.JOIN_ROOM, new JoinRoomRequest(id));
+            });
+    view.room()
+        .onLeave(
+            () -> {
+              if (room != null && view.confirmLeave()) request(PacketType.LEAVE_ROOM, null);
+            });
+    view.room().onReady(this::ready);
+    view.room().onChangeBet(amount -> request(PacketType.CHANGE_ROOM_BET, amount));
+    view.room().onStart(() -> request(PacketType.START_GAME_REQUEST, null));
+    view.room()
+        .onSend(
+            () -> {
+              String text = view.room().messageText();
+              if (text.isBlank() || text.length() > 500) {
+                view.showMessage("Tin nhắn từ 1 đến 500 ký tự.");
+                return;
+              }
+              request(PacketType.CHAT_MESSAGE, new ChatMessage(null, null, text, "TEXT", 0));
+            });
+    view.room().game().onAction(a -> request(PacketType.GAME_ACTION, a));
+    view.onProfile(() -> request(PacketType.GET_PROFILE, null));
+    view.onHistory(() -> openData(true));
+    view.onLeaderboard(() -> openData(false));
+    view.onChangePassword(r -> request(PacketType.CHANGE_PASSWORD, r));
+    view.onClose(
+        () -> {
+          if (!view.confirmLeave()) return;
+          closing = true;
+          maintenance.stop();
+          timeout.stop();
+          if (client != null) client.disconnect();
+          queuedAuth = null;
+          afterRegister = null;
+          view.dispose();
         });
+    updateEnabled();
+  }
 
-        view.room().onReady(this::toggleReady);
-        view.room().onStart(this::startGame);
-        view.room().onSend(this::sendChat);
-
-        view.onClose(() -> {
-            closing = true;
-            maintenance.stop();
-            disconnect("Đã đóng client.");
-            view.dispose();
-        });
-    }
-
-    private void connect() {
-        if (client != null) {
-            return;
+  private void submitAuth() {
+    if (user != null || pending != null || queuedAuth != null) return;
+    char[] chars = view.getPassword(), confirmation = view.getConfirmPassword();
+    try {
+      String username = view.getUsername(), password = new String(chars);
+      if (username.isBlank()
+          || username.length() > 50
+          || password.isBlank()
+          || password.length() > 128) {
+        view.showMessage("Nhập tài khoản và mật khẩu hợp lệ.");
+        return;
+      }
+      if (view.isRegisterMode()) {
+        if (!username.matches("[a-zA-Z0-9_]{3,50}")) {
+          view.showMessage("Tài khoản: 3–50 chữ không dấu, số hoặc _.");
+          return;
         }
-
-        int port;
-
-        try {
-            port = Integer.parseInt(view.getPortText());
-
-            if (view.getHost().isBlank() || port < 1 || port > 65535) {
-                throw new NumberFormatException();
-            }
-        } catch (NumberFormatException e) {
-            view.showMessage(
-                    "IP không được trống; port phải từ 1 đến 65535."
-            );
-            return;
+        if (password.length() < 8) {
+          view.showMessage("Mật khẩu cần ít nhất 8 ký tự.");
+          return;
         }
-
-        view.setConnectionState(false, true, "Đang kết nối...");
-        view.setOperationEnabled(false);
-
-        client = new SocketClient(this);
-        client.connect(view.getHost(), port);
-    }
-
-    private void submitAuth() {
-        if (user != null || pending != null) {
-            return;
+        if (!Arrays.equals(chars, confirmation)) {
+          view.showMessage("Hai mật khẩu không khớp.");
+          return;
         }
-
-        char[] password = view.getPassword();
-        char[] confirm = view.getConfirmPassword();
-        String username = view.getUsername();
-
-        try {
-            String raw = new String(password);
-
-            if (username.isBlank()
-                    || username.length() > 50
-                    || raw.isBlank()
-                    || raw.length() > 128) {
-
-                view.showMessage(
-                        "Nhập tài khoản tối đa 50 "
-                        + "và mật khẩu tối đa 128 ký tự."
-                );
-                return;
-            }
-
-            if (view.isRegisterMode()) {
-                if (raw.length() < 8) {
-                    view.showMessage(
-                            "Mật khẩu đăng ký cần 8–128 ký tự."
-                    );
-                    return;
-                }
-
-                if (!username.matches("[a-zA-Z0-9_]{3,50}")) {
-                    view.showMessage(
-                            "Tài khoản mới: 3–50 ký tự, "
-                            + "chỉ chữ không dấu, số và _."
-                    );
-                    return;
-                }
-
-                if (!Arrays.equals(password, confirm)) {
-                    view.showMessage("Hai mật khẩu không khớp.");
-                    return;
-                }
-
-                if (view.getDisplayName().length() > 100
-                        || view.getEmail().length() > 100) {
-
-                    view.showMessage(
-                            "Tên hiển thị và email tối đa 100 ký tự."
-                    );
-                    return;
-                }
-
-                if (!view.getEmail().isBlank()
-                        && !view.getEmail().matches(
-                                "[^\\s@]+@[^\\s@]+\\.[^\\s@]+"
-                        )) {
-
-                    view.showMessage("Email không hợp lệ.");
-                    return;
-                }
-
-                request(
-                        PacketType.REGISTER,
-                        new RegisterRequest(
-                                username,
-                                raw,
-                                optional(view.getDisplayName()),
-                                optional(view.getEmail())
-                        )
-                );
-            } else {
-                request(
-                        PacketType.LOGIN,
-                        new AuthRequest(username, raw)
-                );
-            }
-        } finally {
-            Arrays.fill(password, '\0');
-            Arrays.fill(confirm, '\0');
+        if (view.getDisplayName().length() > 100 || view.getEmail().length() > 100) {
+          view.showMessage("Tên hiển thị và email tối đa 100 ký tự.");
+          return;
         }
-    }
-
-    private static String optional(String s) {
-        return s.isBlank() ? null : s;
-    }
-
-    private void loadRooms() {
-        if (user != null && room == null && pending == null) {
-            lastRoomList = System.nanoTime();
-            request(PacketType.ROOM_LIST, null);
+        if (!view.getEmail().isBlank()
+            && !view.getEmail().matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
+          view.showMessage("Email chưa hợp lệ.");
+          return;
         }
-    }
-
-    private void createRoom() {
-        if (user == null || room != null || pending != null) {
-            return;
-        }
-
-        try {
-            var v = view.lobby();
-            BigDecimal points = new BigDecimal(v.pointText());
-            int min = v.minPlayers();
-            int max = v.maxPlayers();
-
-            if (v.roomName().isBlank()
-                    || v.roomName().length() > 100
-                    || min < 2
-                    || min > max
-                    || max > 8
-                    || points.signum() <= 0
-                    || points.precision() > 15
-                    || points.scale() < 0
-                    || points.scale() > 2) {
-
-                throw new IllegalArgumentException();
-            }
-
-            request(
-                    PacketType.CREATE_ROOM,
-                    new CreateRoomRequest(
-                            v.roomName(), min, max, points
-                    )
-            );
-        } catch (IllegalArgumentException e) {
-            view.showMessage(
-                    "Tên phòng 1–100 ký tự; "
-                    + "2 ≤ tối thiểu ≤ tối đa ≤ 8; "
-                    + "điểm cơ bản > 0, tối đa 2 số thập phân. "
-                    + "Dùng dấu chấm."
-            );
-        }
-    }
-
-    private void joinRoom() {
-        if (user == null || room != null || pending != null) {
-            return;
-        }
-
-        long id = view.lobby().selectedRoomId();
-
-        if (id <= 0) {
-            view.showMessage("Chọn một phòng trong danh sách.");
-        } else {
-            request(
-                    PacketType.JOIN_ROOM,
-                    new JoinRoomRequest(id)
-            );
-        }
-    }
-
-    private void toggleReady() {
-        if (user == null
-                || room == null
-                || !"WAITING".equals(room.status())) {
-
-            return;
-        }
-
-        var me = room.players().stream()
-                .filter(p -> p.userId() == user.userId())
-                .findFirst()
-                .orElse(null);
-
-        if (me != null && "PLAYING".equals(me.status())) {
-            request(PacketType.SET_READY, !me.ready());
-        }
-    }
-
-    private void startGame() {
-        if (user == null || room == null) {
-            return;
-        }
-
-        if (room.ownerUserId() != user.userId()) {
-            showError(
-                    ErrorCode.NOT_ROOM_OWNER,
-                    "Chỉ chủ phòng được bắt đầu."
-            );
-            return;
-        }
-
-        var active = room.players().stream()
-                .filter(p -> "PLAYING".equals(p.status()))
-                .toList();
-
-        if (!"WAITING".equals(room.status())) {
-            showError(
-                    ErrorCode.INVALID_STATE,
-                    "Phòng không ở trạng thái chờ."
-            );
-        } else if (active.size() < room.minPlayers()) {
-            showError(
-                    ErrorCode.NOT_ENOUGH_PLAYERS,
-                    "Chưa đủ người chơi."
-            );
-        } else if (!active.stream()
-                .allMatch(RoomSnapshot.PlayerSlot::ready)) {
-
-            showError(
-                    ErrorCode.NOT_ALL_READY,
-                    "Có người chưa sẵn sàng."
-            );
-        } else {
-            request(PacketType.START_GAME_REQUEST, null);
-        }
-    }
-
-    private void sendChat() {
-        if (user == null || room == null || pending != null) {
-            return;
-        }
-
-        String content = view.room().messageText();
-
-        if (content.isBlank() || content.length() > 500) {
-            view.showMessage(
-                    "Tin nhắn phải có từ 1 đến 500 ký tự."
-            );
-            return;
-        }
-
-        // Server xác định danh tính, phòng và thời gian.
-        request(
-                PacketType.CHAT_MESSAGE,
-                new ChatMessage(null, null, content, "TEXT", 0)
-        );
-    }
-
-    private void request(PacketType type, Object data) {
-        if (pending != null) {
-            return;
-        }
-
-        if (client == null || !client.isConnected()) {
-            view.showMessage("Bạn cần kết nối server trước.");
-            return;
-        }
-
-        if (type != PacketType.LOGIN
-                && type != PacketType.REGISTER
-                && user == null) {
-
-            view.showMessage("Bạn cần đăng nhập trước.");
-            return;
-        }
-
-        Packet packet = Packet.request(type, data);
-        enteringChat.clear();
-
-        long requestedRoom = data instanceof JoinRoomRequest join
-                ? join.roomId()
-                : room == null ? -1 : room.roomId();
-
-        pending = new PendingRequest(
-                packet.getRequestId(), type, requestedRoom
-        );
-
-        if (!client.send(packet)) {
-            pending = null;
-            view.showMessage(
-                    "Không xếp được yêu cầu gửi: "
-                    + "kết nối đóng hoặc hàng đợi đầy."
-            );
-            return;
-        }
-
-        if (type == PacketType.LOGIN || type == PacketType.REGISTER) {
-            view.clearPasswords();
-        }
-
-        updateEnabled();
-        view.showMessage("Đang xử lý yêu cầu...");
-        view.appendLog(
-                "[Gửi] " + type
-                + " | id=" + packet.getRequestId()
-        );
-        responseTimeout.restart();
-    }
-
-    private void sendTest() {
-        if (client == null
-                || !client.isConnected()
-                || echoes.size() >= 32) {
-
-            return;
-        }
-
-        Packet packet = Packet.request(
-                PacketType.ECHO_REQUEST,
-                "T01 #" + ++testNumber
-        );
-
-        if (client.send(packet)) {
-            echoes.put(
-                    packet.getRequestId(),
-                    System.nanoTime()
-                    + TimeUnit.SECONDS.toNanos(10)
-            );
-
-            view.appendLog(
-                    "[Gửi thử] id=" + packet.getRequestId()
-            );
-        } else {
-            view.showMessage("Không xếp được yêu cầu thử.");
-        }
-    }
-
-    private void maintain() {
-        long now = System.nanoTime();
-
-        echoes.entrySet().removeIf(e -> {
-            if (now < e.getValue()) {
-                return false;
-            }
-
-            view.appendLog(
-                    "[Quá hạn ACK thử] id=" + e.getKey()
-            );
-            return true;
-        });
-
-        if (user != null
-                && room == null
-                && pending == null
-                && now - lastRoomList >= TimeUnit.SECONDS.toNanos(5)) {
-
-            loadRooms();
-        }
-    }
-
-    @Override
-    public void onConnected(SocketClient source) {
-        onUi(source, () -> {
-            if (!source.isConnected()) {
-                return;
-            }
-
-            view.setConnectionState(true, false, "Đã kết nối");
-            updateEnabled();
-            view.showMessage(
-                    "Đã kết nối. Bạn có thể đăng nhập hoặc đăng ký."
-            );
-        });
-    }
-
-    @Override
-    public void onPacketReceived(SocketClient source, Packet packet) {
-        onUi(source, () -> handle(packet));
-    }
-
-    private void handle(Packet packet) {
-        PacketType type = packet.getType();
-        String id = packet.getRequestId();
-
-        // Không log payload tài khoản hoặc mật khẩu.
-        view.appendLog("[Nhận] " + type + " | id=" + id);
-
-        if (type == PacketType.PING) {
-            view.appendLog(
-                    "[Heartbeat] Nhận PING, "
-                    + "đã xếp PONG cùng requestId."
-            );
-            return;
-        }
-
-        if (type == PacketType.SERVER_NOTICE) {
-            view.appendLog("[Server] " + packet.getData());
-            return;
-        }
-
-        if (echoes.containsKey(id)
-                && (type == PacketType.ACK
-                    || type == PacketType.ERROR)) {
-
-            echoes.remove(id);
-
-            if (type == PacketType.ACK) {
-                view.appendLog("[ACK thử khớp] id=" + id);
-            } else {
-                error((Packet.ErrorPayload) packet.getData());
-            }
-
-            return;
-        }
-
-        if (type == PacketType.ROOM_UPDATED && id == null) {
-            applyRoom((RoomSnapshot) packet.getData(), false);
-            return;
-        }
-
-        if ((type == PacketType.CHAT_MESSAGE
-                || type == PacketType.CHAT_SYSTEM)
-                && id == null) {
-
-            if (!(packet.getData() instanceof RoomChatEvent event)) {
-                disconnect(
-                        "Dữ liệu chat không tương thích. "
-                        + "Cần cập nhật client và server cùng phiên bản."
-                );
-                return;
-            }
-
-            // Server có thể phát thông báo vào phòng trước phản hồi riêng.
-            if (room == null
-                    && pending != null
-                    && (pending.type() == PacketType.CREATE_ROOM
-                        || pending.type() == PacketType.JOIN_ROOM)) {
-
-                if (enteringChat.size() < 16) {
-                    enteringChat.add(event);
-                }
-                return;
-            }
-
-            if (room != null
-                    && event.roomId() == room.roomId()
-                    && (pending == null
-                        || (pending.type() != PacketType.LEAVE_ROOM
-                            && pending.type() != PacketType.LOGOUT))) {
-
-                view.room().appendChat(event.message());
-            }
-
-            return;
-        }
-
-        if (pending == null || !pending.id().equals(id)) {
-            return;
-        }
-
-        PendingRequest request = pending;
-
-        if (type == PacketType.ERROR) {
-            enteringChat.clear();
-            finishRequest();
-
-            var failure = (Packet.ErrorPayload) packet.getData();
-
-            if (failure.code() == ErrorCode.UNAUTHENTICATED) {
-                signedOut();
-            } else if ((failure.code() == ErrorCode.NOT_IN_ROOM
-                    || failure.code() == ErrorCode.ROOM_NOT_FOUND)
-                    && room != null) {
-
-                room = null;
-                view.showLobby();
-                updateEnabled();
-            }
-
-            error(failure);
-            return;
-        }
-
-        if ((request.type() == PacketType.LOGIN
-                || request.type() == PacketType.REGISTER)
-                && type == PacketType.AUTH_RESULT) {
-
-            AuthResult result = (AuthResult) packet.getData();
-            finishRequest();
-
-            if (!result.success()) {
-                showError(result.errorCode(), result.message());
-            } else if (request.type() == PacketType.REGISTER) {
-                view.registrationCompleted();
-                view.showMessage(
-                        "Đăng ký thành công. "
-                        + "Hãy đăng nhập bằng tài khoản vừa tạo."
-                );
-            } else if (result.userId() == null
-                    || result.userId() <= 0
-                    || result.username() == null
-                    || result.username().isBlank()) {
-
-                disconnect(
-                        "Phản hồi đăng nhập thiếu danh tính hợp lệ."
-                );
-            } else {
-                user = result;
-
-                String name = result.displayName() == null
-                        || result.displayName().isBlank()
-                        ? result.username()
-                        : result.displayName();
-
-                view.showSignedIn(name, result.userId());
-                view.showLobby();
-                loadRooms();
-            }
-
-            return;
-        }
-
-        if (request.type() == PacketType.ROOM_LIST
-                && type == PacketType.ROOM_LIST_RESULT) {
-
-            List<RoomSummary> values =
-                    ((List<?>) packet.getData()).stream()
-                            .map(RoomSummary.class::cast)
-                            .toList();
-
-            finishRequest();
-            view.lobby().setRooms(values);
-
-            view.showMessage(
-                    values.isEmpty()
-                            ? "Chưa có phòng. Bạn có thể tạo phòng mới."
-                            : "Đã tải danh sách phòng."
-            );
-            return;
-        }
-
-        if ((request.type() == PacketType.CREATE_ROOM
-                || request.type() == PacketType.JOIN_ROOM
-                || request.type() == PacketType.SET_READY)
-                && type == PacketType.ROOM_UPDATED) {
-
-            RoomSnapshot snapshot =
-                    (RoomSnapshot) packet.getData();
-
-            if ((request.type() == PacketType.JOIN_ROOM
-                    && snapshot.roomId() != request.roomId())
-                    || (request.type() == PacketType.SET_READY
-                        && (room == null
-                            || snapshot.roomId() != room.roomId()))) {
-
-                disconnect(
-                        "Phản hồi thao tác phòng không khớp mã phòng."
-                );
-                return;
-            }
-
-            finishRequest();
-
-            if (applyRoom(
-                    snapshot,
-                    request.type() != PacketType.SET_READY
-            )) {
-                view.showMessage("Đã cập nhật phòng.");
-            }
-
-            return;
-        }
-
-        if (type == PacketType.ACK) {
-            switch (request.type()) {
-                case LOGOUT -> {
-                    finishRequest();
-                    signedOut();
-                    view.showMessage(
-                            "Đã đăng xuất. Kết nối vẫn được giữ."
-                    );
-                }
-
-                case LEAVE_ROOM -> {
-                    finishRequest();
-                    room = null;
-                    view.showLobby();
-                    loadRooms();
-                }
-
-                case CHAT_MESSAGE -> {
-                    finishRequest();
-                    view.room().clearInput();
-                    view.showMessage("Đã gửi tin nhắn.");
-                }
-
-                default -> disconnect(
-                        "Server trả ACK không đúng hợp đồng cho "
-                        + request.type()
-                );
-            }
-
-            return;
-        }
-
-        disconnect(
-                "Server trả sai loại phản hồi cho " + request.type()
-        );
-    }
-
-    private boolean applyRoom(
-            RoomSnapshot snapshot,
-            boolean entering
-    ) {
-        if (user == null) {
-            return false;
-        }
-
-        if (!entering
-                && (room == null
-                    || room.roomId() != snapshot.roomId())) {
-
-            return false;
-        }
-
-        if (room != null
-                && room.roomId() == snapshot.roomId()
-                && snapshot.stateVersion() <= room.stateVersion()) {
-
-            return true;
-        }
-
-        if (!validRoom(snapshot)) {
-            disconnect(
-                    "Snapshot phòng thiếu hoặc sai thông tin thành viên."
-            );
-            return false;
-        }
-
-        room = snapshot;
-        view.showRoom(snapshot, user.userId());
-
-        for (RoomChatEvent event : enteringChat) {
-            if (event.roomId() == snapshot.roomId()) {
-                view.room().appendChat(event.message());
-            }
-        }
-
-        enteringChat.clear();
-        updateEnabled();
-        return true;
-    }
-
-    private boolean validRoom(RoomSnapshot r) {
-        if (r.roomId() <= 0
-                || r.stateVersion() < 0
-                || r.roomName() == null
-                || r.roomName().isBlank()
-                || r.roomName().length() > 100
-                || r.roomCode() == null
-                || r.status() == null
-                || !Set.of(
-                        "WAITING", "PLAYING", "FINISHED"
-                ).contains(r.status())
-                || r.minPlayers() < 2
-                || r.maxPlayers() < r.minPlayers()
-                || r.maxPlayers() > 8
-                || r.players() == null
-                || r.players().size() > r.maxPlayers()) {
-
-            return false;
-        }
-
-        Set<Long> ids = new HashSet<>();
-        Set<Integer> seats = new HashSet<>();
-        boolean mine = false;
-        boolean owner = false;
-
-        for (var p : r.players()) {
-            if (p == null
-                    || p.userId() <= 0
-                    || p.seatNumber() < 1
-                    || p.seatNumber() > r.maxPlayers()
-                    || p.status() == null
-                    || !Set.of(
-                            "PLAYING", "SPECTATOR", "LEFT"
-                    ).contains(p.status())
-                    || !ids.add(p.userId())
-                    || !seats.add(p.seatNumber())) {
-
-                return false;
-            }
-
-            mine |= p.userId() == user.userId()
-                    && !"LEFT".equals(p.status());
-
-            owner |= p.userId() == r.ownerUserId()
-                    && !"LEFT".equals(p.status());
-        }
-
-        return mine && owner;
-    }
-
-    private void error(Packet.ErrorPayload e) {
-        showError(e.code(), e.message());
-    }
-
-    private void showError(ErrorCode code, String message) {
-        view.showMessage(
-                (code == null ? "Lỗi" : code.name())
-                + ": "
-                + (message == null || message.isBlank()
-                    ? "Yêu cầu thất bại." : message)
-        );
-    }
-
-    private void finishRequest() {
-        responseTimeout.stop();
-        pending = null;
-        updateEnabled();
-    }
-
-    private void updateEnabled() {
-        view.setOperationEnabled(
-                client != null
-                && client.isConnected()
-                && pending == null
-        );
-    }
-
-    private void signedOut() {
-        user = null;
-        room = null;
-        enteringChat.clear();
-
-        view.showSignedOut();
-        updateEnabled();
-    }
-
-    private void disconnect(String reason) {
+        afterRegister = new AuthRequest(username, password);
+        queuedAuth =
+            Packet.request(
+                PacketType.REGISTER,
+                new RegisterRequest(
+                    username,
+                    password,
+                    optional(view.getDisplayName()),
+                    optional(view.getEmail())));
+      } else queuedAuth = Packet.request(PacketType.LOGIN, new AuthRequest(username, password));
+      view.clearPasswords();
+      view.showMessage("Đang vào game…");
+      updateEnabled();
+      timeout.restart();
+      if (client != null
+          && (!view.getHost().equals(connectedHost) || view.getPort() != connectedPort)) {
         SocketClient old = client;
         client = null;
-
-        if (old != null) {
-            old.disconnect();
-        }
-
-        echoes.clear();
-        finishRequest();
-        signedOut();
-
-        view.setConnectionState(false, false, "Chưa kết nối");
-        view.showMessage(reason);
-        view.appendLog(reason);
+        old.disconnect();
+      }
+      if (client != null && client.isConnected()) sendQueuedAuth();
+      else {
+        client = new SocketClient(this);
+        connectedHost = view.getHost();
+        connectedPort = view.getPort();
+        client.connect(connectedHost, connectedPort);
+      }
+    } finally {
+      Arrays.fill(chars, '\0');
+      Arrays.fill(confirmation, '\0');
     }
+  }
 
-    @Override
-    public void onDisconnected(SocketClient source, String reason) {
-        onUi(source, () -> disconnect(reason));
+  private static String optional(String s) {
+    return s.isBlank() ? null : s;
+  }
+
+  private void sendQueuedAuth() {
+    Packet p = queuedAuth;
+    queuedAuth = null;
+    if (p != null) send(p, false);
+  }
+
+  private void ready() {
+    if (room == null || user == null || !"WAITING".equals(room.status())) return;
+    room.players().stream()
+        .filter(p -> p.userId() == user.userId())
+        .findFirst()
+        .ifPresent(p -> request(PacketType.SET_READY, !p.ready()));
+  }
+
+  private void request(PacketType type, Object data) {
+    request(type, data, false);
+  }
+
+  private void request(PacketType type, Object data, boolean silent) {
+    if (pending != null || queuedAuth != null) return;
+    if (client == null || !client.isConnected()) {
+      disconnect("Kết nối đã ngắt. Đăng nhập lại để tiếp tục.");
+      return;
     }
+    send(Packet.request(type, data), silent);
+  }
 
-    private void onUi(SocketClient source, Runnable action) {
-        SwingUtilities.invokeLater(() -> {
-            // Callback kết nối cũ không được sửa trạng thái kết nối mới.
-            if (!closing && client == source) {
-                action.run();
-            }
+  private void send(Packet p, boolean silent) {
+    long target =
+        p.getData() instanceof JoinRoomRequest j ? j.roomId() : room == null ? -1 : room.roomId();
+    pending = new Pending(p.getRequestId(), p.getType(), target, silent);
+    if (p.getType() == PacketType.JOIN_ROOM) enteringChat.clear();
+    if (!client.send(p)) {
+      disconnect("Không gửi được thao tác. Vui lòng đăng nhập lại.");
+      return;
+    }
+    updateEnabled();
+    timeout.restart();
+  }
+
+  private void maintain() {
+    if (user == null || pending != null || room != null) return;
+    long now = System.nanoTime();
+    if (now - lastRooms >= TimeUnit.SECONDS.toNanos(10)) {
+      loadRooms(true);
+      return;
+    }
+    if (now - lastProfile >= TimeUnit.SECONDS.toNanos(5)) {
+      lastProfile = now;
+      request(PacketType.GET_PROFILE, null, true);
+    }
+  }
+
+  private void loadRooms(boolean silent) {
+    lastRooms = System.nanoTime();
+    request(PacketType.ROOM_LIST, null, silent);
+  }
+
+  private void openData(boolean history) {
+    if (user == null || pending != null) return;
+    if (dataDialog != null) dataDialog.dispose();
+    dataDialog = new DataDialog(view, history ? "Lịch sử của tôi" : "Bảng xếp hạng");
+    dataDialog.onLoad(
+        page -> {
+          if (pending != null) {
+            dataDialog.failure("Đợi thao tác hiện tại rồi tải lại.");
+            return;
+          }
+          request(
+              history ? PacketType.GET_HISTORY : PacketType.GET_LEADERBOARD,
+              new PageRequest(page, 20));
         });
+    dataDialog.setVisible(true);
+    request(history ? PacketType.GET_HISTORY : PacketType.GET_LEADERBOARD, new PageRequest(0, 20));
+  }
+
+  @Override
+  public void onConnected(SocketClient source) {
+    onUi(source, this::sendQueuedAuth);
+  }
+
+  @Override
+  public void onPacketReceived(SocketClient source, Packet packet) {
+    onUi(source, () -> handle(packet));
+  }
+
+  @Override
+  public void onDisconnected(SocketClient source, String reason) {
+    onUi(
+        source,
+        () ->
+            disconnect(
+                user == null
+                    ? "Chưa thể vào game. Kiểm tra máy chủ và đăng nhập lại."
+                    : "Kết nối bị gián đoạn. Đăng nhập lại để tiếp tục."));
+  }
+
+  private void handle(Packet packet) {
+    PacketType type = packet.getType();
+    String id = packet.getRequestId();
+    Object data = packet.getData();
+    if (type == PacketType.PING || type == PacketType.SERVER_NOTICE) return;
+    if (id == null) {
+      if (user == null) return;
+      if (type == PacketType.ROOM_LIST_RESULT) {
+        setRooms(data);
+        return;
+      }
+      if (type == PacketType.ROOM_UPDATED) {
+        applyRoom((RoomSnapshot) data, false);
+        return;
+      }
+      if (type == PacketType.CHAT_MESSAGE || type == PacketType.CHAT_SYSTEM) {
+        var event = (RoomChatEvent) data;
+        if (room != null && event.roomId() == room.roomId())
+          view.room().appendChat(event.message());
+        else if (pending != null
+            && pending.type() == PacketType.JOIN_ROOM
+            && enteringChat.size() < 16) enteringChat.add(event);
+        return;
+      }
+      if (room == null) return;
+      var game = view.room().game();
+      switch (type) {
+        case START_GAME -> {
+          var start = (GameStartInfo) data;
+          if (start.roomId() == room.roomId()) {
+            game.start(start.roundId(), user.userId());
+            view.showMessage("Ván mới đã bắt đầu. Chúc bạn may mắn!");
+          }
+        }
+        case GAME_UPDATED -> game.game((GameStateSnapshot) data);
+        case BET_UPDATED -> game.bets((BetStateSnapshot) data);
+        case PLAYER_STATE -> {
+          var state = (PlayerStateSnapshot) data;
+          if (game.accepts(state.roundId())) {
+            game.mine(state);
+            view.setBalance(state.myBalance());
+          }
+        }
+        case ROUND_RESULT -> {
+          game.result((RoundResult) data);
+          lastProfile = System.nanoTime();
+          view.showMessage(
+              "Kết quả hiện "
+                  + RoundResult.DISPLAY_SECONDS
+                  + " giây; sau đó bạn chọn có sẵn sàng tiếp.");
+        }
+        default -> {}
+      }
+      return;
     }
+    if (pending == null || !pending.id().equals(id)) return;
+    Pending request = pending;
+    if (type == PacketType.ERROR) {
+      finish();
+      var error = (Packet.ErrorPayload) data;
+      afterRegister = null;
+      if (error.code() == ErrorCode.UNAUTHENTICATED) signedOut();
+      if ((error.code() == ErrorCode.NOT_IN_ROOM || error.code() == ErrorCode.ROOM_NOT_FOUND)
+          && room != null) {
+        room = null;
+        view.showLobby();
+        updateEnabled();
+      }
+      if (dataDialog != null
+          && dataDialog.isDisplayable()
+          && (request.type() == PacketType.GET_HISTORY
+              || request.type() == PacketType.GET_LEADERBOARD)) dataDialog.failure(error.message());
+      view.showMessage(
+          error.message() == null ? "Chưa thực hiện được thao tác này." : error.message());
+      return;
+    }
+    if (type == PacketType.AUTH_RESULT
+        && (request.type() == PacketType.LOGIN || request.type() == PacketType.REGISTER)) {
+      var result = (AuthResult) data;
+      finish();
+      if (!result.success()) {
+        afterRegister = null;
+        view.showMessage(result.message());
+        return;
+      }
+      if (request.type() == PacketType.REGISTER) {
+        var login = afterRegister;
+        afterRegister = null;
+        view.registrationCompleted();
+        view.showMessage("Tạo tài khoản thành công. Đang vào sảnh…");
+        if (login != null) request(PacketType.LOGIN, login);
+        return;
+      }
+      if (result.userId() == null || result.userId() <= 0) {
+        disconnect("Không xác nhận được tài khoản. Đăng nhập lại.");
+        return;
+      }
+      user = result;
+      view.showSignedIn(
+          result.displayName() == null ? result.username() : result.displayName(), result.userId());
+      view.setBalance(result.balance());
+      view.showLobby();
+      lastProfile = System.nanoTime();
+      loadRooms(false);
+      updateEnabled();
+      view.showMessage("Chào mừng bạn đến sảnh Ba Cây.");
+      return;
+    }
+    if (request.type() == PacketType.ROOM_LIST && type == PacketType.ROOM_LIST_RESULT) {
+      finish();
+      setRooms(data);
+      return;
+    }
+    if ((request.type() == PacketType.JOIN_ROOM
+            || request.type() == PacketType.SET_READY
+            || request.type() == PacketType.CHANGE_ROOM_BET)
+        && type == PacketType.ROOM_UPDATED) {
+      var snapshot = (RoomSnapshot) data;
+      if (snapshot.roomId() != request.roomId()) {
+        disconnect("Không đồng bộ được bàn chơi. Vui lòng đăng nhập lại.");
+        return;
+      }
+      finish();
+      applyRoom(snapshot, request.type() == PacketType.JOIN_ROOM);
+      view.showMessage(
+          request.type() == PacketType.JOIN_ROOM
+              ? "Đã vào " + snapshot.roomName() + ". Bấm Sẵn sàng để chơi."
+              : request.type() == PacketType.CHANGE_ROOM_BET
+                  ? "Đã đổi cược cơ bản. Cả bàn cần xác nhận sẵn sàng lại."
+                  : "Đã cập nhật trạng thái sẵn sàng.");
+      return;
+    }
+    if (type == PacketType.PROFILE_RESULT
+        && (request.type() == PacketType.GET_PROFILE
+            || request.type() == PacketType.UPDATE_PROFILE)) {
+      var p = (ProfileResult) data;
+      finish();
+      lastProfile = System.nanoTime();
+      view.showSignedIn(p.displayName(), p.userId());
+      if (room == null) view.setBalance(p.balance());
+      if (request.type() == PacketType.GET_PROFILE && !request.silent())
+        view.editProfile(p, room == null, r -> request(PacketType.UPDATE_PROFILE, r));
+      else if (request.type() == PacketType.UPDATE_PROFILE) view.showMessage("Đã lưu hồ sơ.");
+      return;
+    }
+    if ((request.type() == PacketType.GET_HISTORY && type == PacketType.HISTORY_RESULT)
+        || (request.type() == PacketType.GET_LEADERBOARD
+            && type == PacketType.LEADERBOARD_RESULT)) {
+      finish();
+      if (dataDialog != null && dataDialog.isDisplayable())
+        dataDialog.showPage((PageResult<?>) data, request.type() == PacketType.GET_HISTORY);
+      return;
+    }
+    if (type == PacketType.ACK) {
+      finish();
+      switch (request.type()) {
+        case LOGOUT -> {
+          signedOut();
+          view.showMessage("Đã đăng xuất.");
+        }
+        case LEAVE_ROOM -> {
+          room = null;
+          view.showLobby();
+          updateEnabled();
+          loadRooms(false);
+          view.showMessage("Bạn đã về sảnh chơi.");
+        }
+        case CHAT_MESSAGE -> view.room().clearInput();
+        case CHANGE_PASSWORD -> view.showMessage("Đã đổi mật khẩu.");
+        case START_GAME_REQUEST, GAME_ACTION, PLAY_AGAIN_VOTE -> {}
+        default -> disconnect("Phiên bản game chưa tương thích. Mở lại bản mới nhất.");
+      }
+      return;
+    }
+    disconnect("Không đồng bộ được game. Vui lòng đăng nhập lại.");
+  }
+
+  private void setRooms(Object data) {
+    view.lobby().setRooms(((List<?>) data).stream().map(RoomSummary.class::cast).toList());
+  }
+
+  private void applyRoom(RoomSnapshot next, boolean entering) {
+    if (user == null || (!entering && (room == null || next.roomId() != room.roomId()))) return;
+    if (room != null
+        && room.roomId() == next.roomId()
+        && next.stateVersion() <= room.stateVersion()) return;
+    if (next.roomId() < 1
+        || next.roomId() > 20
+        || next.players() == null
+        || next.players().size() > 8
+        || next.players().stream().noneMatch(p -> p.userId() == user.userId())
+        || next.players().stream().noneMatch(p -> p.userId() == next.ownerUserId())) {
+      disconnect("Bàn chơi chưa đồng bộ. Đăng nhập lại để tiếp tục.");
+      return;
+    }
+    boolean returnedToWaiting =
+        room != null && "RESULT".equals(room.status()) && "WAITING".equals(next.status());
+    room = next;
+    view.showRoom(next, user.userId());
+    if (returnedToWaiting)
+      view.showMessage("Kết quả đã ẩn. Bạn có thể sẵn sàng cho ván mới hoặc rời bàn.");
+    for (var e : enteringChat) if (e.roomId() == next.roomId()) view.room().appendChat(e.message());
+    enteringChat.clear();
+    updateEnabled();
+  }
+
+  private void finish() {
+    pending = null;
+    timeout.stop();
+    updateEnabled();
+  }
+
+  private void updateEnabled() {
+    view.setOperationEnabled(queuedAuth == null && pending == null);
+  }
+
+  private void signedOut() {
+    user = null;
+    room = null;
+    enteringChat.clear();
+    afterRegister = null;
+    if (dataDialog != null) {
+      dataDialog.dispose();
+      dataDialog = null;
+    }
+    view.showSignedOut();
+    updateEnabled();
+  }
+
+  private void disconnect(String reason) {
+    var old = client;
+    client = null;
+    queuedAuth = null;
+    afterRegister = null;
+    pending = null;
+    timeout.stop();
+    if (old != null) old.disconnect();
+    signedOut();
+    view.showMessage(reason);
+  }
+
+  private void onUi(SocketClient source, Runnable action) {
+    SwingUtilities.invokeLater(
+        () -> {
+          if (!closing && client == source) action.run();
+        });
+  }
 }
