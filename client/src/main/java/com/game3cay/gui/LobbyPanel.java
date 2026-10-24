@@ -175,9 +175,9 @@ public final class LobbyPanel extends JPanel {
       int w = getWidth(), h = getHeight();
       boolean hover = getModel().isRollover() && isEnabled();
       g.setPaint(
-          new GradientPaint(0, 0, new Color(29, 53, 44, 245), w, h, new Color(8, 28, 24, 250)));
+          new GradientPaint(0, 0, new Color(16, 32, 56, 245), w, h, new Color(8, 18, 32, 250)));
       g.fillRoundRect(0, 0, w, h, 17, 17);
-      g.setColor(hover ? Theme.GOLD : new Color(97, 95, 62));
+      g.setColor(hover ? Theme.GOLD : new Color(55, 78, 110));
       g.setStroke(new BasicStroke(hover ? 2f : 1f));
       g.drawRoundRect(1, 1, w - 3, h - 3, 17, 17);
       int n = data == null ? 0 : data.playerCount();
@@ -189,7 +189,7 @@ public final class LobbyPanel extends JPanel {
       g.setFont(Theme.font(11, true));
       String tag =
           result ? "KẾT QUẢ" : playing ? "ĐANG CHƠI" : n == 8 ? "ĐÃ ĐẦY" : n > 0 ? "CÓ NGƯỜI" : "";
-      g.setColor(playing || result ? Theme.GOLD : Theme.GREEN);
+      g.setColor(playing || result ? Theme.GOLD : new Color(110, 190, 240));
       g.drawString(tag, w - 15 - g.getFontMetrics().stringWidth(tag), 29);
       int tw = Math.min(106, w / 2), th = Math.min(65, h - 60);
       g.drawImage(Assets.get("table.png", 240), 14, 39, tw, th, null);
@@ -200,10 +200,10 @@ public final class LobbyPanel extends JPanel {
       g.setColor(Theme.MUTED);
       g.drawString("/ 8", w - 43, 70);
       for (int i = 0; i < 8; i++) {
-        g.setColor(i < n ? Theme.GREEN : new Color(58, 80, 63));
+        g.setColor(i < n ? Theme.GOLD : new Color(38, 58, 88));
         g.fillOval(w - 72 + (i % 4) * 12, 79 + (i / 4) * 12, 7, 7);
       }
-      g.setColor(new Color(78, 93, 67));
+      g.setColor(new Color(42, 65, 96));
       g.drawLine(16, h - 34, w - 16, h - 34);
       g.setFont(Theme.font(12, false));
       g.setColor(Theme.GOLD);

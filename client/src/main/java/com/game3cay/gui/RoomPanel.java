@@ -17,7 +17,7 @@ public final class RoomPanel extends JPanel {
   private final Theme.Button changeBet = new Theme.Button("Đổi cược", "gold");
   private final JPanel betControls = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
   private final Theme.Button send = new Theme.Button("Gửi", "gold"),
-      ready = new Theme.Button("Sẵn sàng", "green"),
+      ready = new Theme.Button("Sẵn sàng", "gold"),
       start = new Theme.Button("Bắt đầu", "gold"),
       leave = new Theme.Button("← Sảnh chơi", "plain");
   private final GamePanel game = new GamePanel();

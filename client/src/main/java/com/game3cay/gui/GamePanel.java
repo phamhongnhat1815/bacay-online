@@ -11,7 +11,7 @@ public final class GamePanel extends JPanel {
   private final GameTablePanel table = new GameTablePanel();
   private final JLabel status = Theme.label("Chờ mọi người sẵn sàng", 14, Theme.MUTED);
   private final JTextField raiseTo = new JTextField("20", 5);
-  private final Theme.Button call = new Theme.Button("Theo", "green"),
+  private final Theme.Button call = new Theme.Button("Theo", "gold"),
       raise = new Theme.Button("Tố đến", "gold"),
       fold = new Theme.Button("Úp bài", "plain"),
       allIn = new Theme.Button("Tất tay", "red"),

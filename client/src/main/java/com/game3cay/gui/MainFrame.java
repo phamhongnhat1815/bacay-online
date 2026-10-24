@@ -53,17 +53,17 @@ public final class MainFrame extends JFrame {
             var g = (Graphics2D) gg.create();
             Assets.quality(g);
             Assets.cover(g, Assets.get("backgrounds/casino.png", 1700), getWidth(), getHeight());
-            g.setColor(new Color(0, 15, 12, 180));
+            g.setColor(new Color(6, 14, 25, 175));
             g.fillRect(0, 0, getWidth(), getHeight());
             g.dispose();
           }
         };
     session.setOpaque(false);
     var header = new JPanel(new BorderLayout(15, 0));
-    header.setBackground(new Color(5, 20, 18));
+    header.setBackground(new Color(8, 18, 32));
     header.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(98, 91, 57)),
+            BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(150, 125, 65)),
             new EmptyBorder(16, 28, 16, 28)));
     var brand = Theme.transparent(new GridLayout(0, 1, 0, 2));
     var logo = Theme.label("♠  BA CÂY", 25, Theme.GOLD);

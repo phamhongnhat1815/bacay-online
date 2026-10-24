@@ -107,7 +107,7 @@ public final class AuthPanel extends JPanel {
     var g = (Graphics2D) gg.create();
     Assets.quality(g);
     Assets.cover(g, Assets.get("backgrounds/auth.png", 1700), getWidth(), getHeight());
-    g.setColor(new Color(2, 12, 10, 90));
+    g.setColor(new Color(4, 10, 22, 90));
     g.fillRect(0, 0, getWidth(), getHeight());
     if (getWidth() >= 1050) {
       int x = 85, y = Math.max(115, getHeight() / 2 - 190);

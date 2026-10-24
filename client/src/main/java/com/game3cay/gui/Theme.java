@@ -7,12 +7,12 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
 public final class Theme {
-  public static final Color BG = new Color(9, 24, 23),
-      PANEL = new Color(16, 37, 34),
-      GOLD = new Color(235, 195, 110),
+  public static final Color BG = new Color(8, 16, 28),
+      PANEL = new Color(12, 22, 38),
+      GOLD = new Color(230, 190, 105),
       TEXT = new Color(246, 241, 226),
-      MUTED = new Color(157, 178, 165),
-      GREEN = new Color(103, 217, 163),
+      MUTED = new Color(152, 172, 196),
+      GREEN = new Color(80, 200, 160),
       RED = new Color(245, 131, 123);
 
   private Theme() {}
@@ -43,10 +43,10 @@ public final class Theme {
     field.setFont(font(15, false));
     field.setForeground(TEXT);
     field.setCaretColor(GOLD);
-    field.setBackground(new Color(9, 26, 24));
+    field.setBackground(new Color(11, 21, 37));
     field.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(65, 87, 71)),
+            BorderFactory.createLineBorder(new Color(42, 68, 105)),
             new EmptyBorder(10, 12, 10, 12)));
     field.setPreferredSize(new Dimension(220, 42));
   }
@@ -98,13 +98,13 @@ public final class Theme {
       } else {
         g.setColor(
             Boolean.TRUE.equals(getClientProperty("active"))
-                ? new Color(235, 195, 110, 27)
+                ? new Color(230, 190, 105, 27)
                 : getModel().isRollover()
                     ? new Color(255, 255, 255, 23)
                     : new Color(255, 255, 255, 7));
         g.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
         g.setColor(
-            Boolean.TRUE.equals(getClientProperty("active")) ? GOLD : new Color(97, 112, 89));
+            Boolean.TRUE.equals(getClientProperty("active")) ? GOLD : new Color(65, 88, 120));
         g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
       }
       if (getModel().isRollover() && isEnabled()) {
@@ -133,9 +133,9 @@ public final class Theme {
     protected void paintComponent(Graphics gg) {
       var g = (Graphics2D) gg.create();
       Assets.quality(g);
-      g.setColor(new Color(4, 17, 16, 235));
+      g.setColor(new Color(8, 18, 34, 235));
       g.fillRoundRect(0, 0, getWidth(), getHeight(), 24, 24);
-      g.setColor(new Color(180, 145, 76, 150));
+      g.setColor(new Color(212, 175, 55, 160));
       g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 24, 24);
       g.dispose();
       super.paintComponent(gg);

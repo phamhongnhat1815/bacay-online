@@ -156,9 +156,9 @@ public final class GameTablePanel extends JPanel {
       center(g, "BA CÂY", 550, 319, new Color(214, 197, 138, 135));
     }
     if (bets != null) {
-      g.setColor(new Color(0, 20, 16, 210));
+      g.setColor(new Color(8, 18, 34, 230));
       g.fillRoundRect(420, 339, 260, 76, 30, 30);
-      g.setColor(new Color(181, 159, 91));
+      g.setColor(new Color(212, 175, 55, 180));
       g.drawRoundRect(420, 339, 260, 76, 30, 30);
       g.drawImage(Assets.get("chips.png", 110), 436, 352, 65, 46, null);
       g.setFont(Theme.font(10, true));
@@ -172,7 +172,7 @@ public final class GameTablePanel extends JPanel {
           Theme.points(room.betAmount()) + " điểm cơ bản  ·  3 lá mỗi người",
           550,
           352,
-          new Color(208, 216, 189));
+          new Color(230, 236, 245));
       g.setFont(Theme.font(12, false));
       center(g, "Sẵn sàng để bắt đầu", 550, 377, Theme.MUTED);
     }
@@ -182,7 +182,7 @@ public final class GameTablePanel extends JPanel {
       if ("CANCELLED".equals(result.roundStatus())) label = "VÁN ĐÃ HỦY · HOÀN ĐIỂM";
       else if (winners.isEmpty()) label = "KẾT THÚC VÁN";
       else label = shorten(g, winners.getFirst().displayName(), 215) + " THẮNG";
-      g.setColor(new Color(13, 29, 22, 240));
+      g.setColor(new Color(10, 22, 40, 240));
       g.fillRoundRect(377, 289, 346, 40, 17, 17);
       g.setColor(Theme.GOLD);
       g.drawRoundRect(377, 289, 346, 40, 17, 17);
@@ -202,12 +202,12 @@ public final class GameTablePanel extends JPanel {
             && game.currentTurnUserId() == p.userId();
     int left = x - w / 2, top = y - h / 2;
     if (p == null) {
-      g.setColor(new Color(5, 22, 19, 125));
+      g.setColor(new Color(8, 18, 32, 140));
       g.fillRoundRect(left, top, w, h, 19, 19);
-      g.setColor(new Color(183, 166, 115, 70));
+      g.setColor(new Color(212, 175, 55, 80));
       g.drawRoundRect(left, top, w, h, 19, 19);
       g.setFont(Theme.font(12, false));
-      center(g, "Ghế " + seat + " · Trống", x, y + 5, new Color(155, 174, 150, 150));
+      center(g, "Ghế " + seat + " · Trống", x, y + 5, new Color(150, 172, 198, 160));
       return;
     }
     if (turn) {
@@ -215,9 +215,9 @@ public final class GameTablePanel extends JPanel {
       g.fillRoundRect(left - 5, top - 5, w + 10, h + 10, 24, 24);
     }
     g.setPaint(
-        new GradientPaint(left, top, new Color(35, 48, 35), left, top + h, new Color(7, 22, 19)));
+        new GradientPaint(left, top, new Color(18, 36, 62), left, top + h, new Color(9, 18, 32)));
     g.fillRoundRect(left, top, w, h, 17, 17);
-    g.setColor(turn || self ? Theme.GOLD : new Color(125, 112, 73));
+    g.setColor(turn || self ? Theme.GOLD : new Color(140, 120, 75));
     g.setStroke(new BasicStroke(turn ? 2.5f : 1.2f));
     g.drawRoundRect(left, top, w, h, 17, 17);
     var av = Assets.get("avatars/avatar_player_" + ((p.userId() - 1) % 6 + 1) + ".png", 100);
