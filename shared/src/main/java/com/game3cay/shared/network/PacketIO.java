@@ -1,12 +1,37 @@
 package com.game3cay.shared.network;
 
-import com.game3cay.shared.model.*;
 import java.io.IOException;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.List;
+
+import com.game3cay.shared.model.AdminPayload;
+import com.game3cay.shared.model.AuthRequest;
+import com.game3cay.shared.model.AuthResult;
+import com.game3cay.shared.model.BetStateSnapshot;
+import com.game3cay.shared.model.ChangePasswordRequest;
+import com.game3cay.shared.model.ChatMessage;
+import com.game3cay.shared.model.CreateRoomRequest;
+import com.game3cay.shared.model.DealCardPayload;
+import com.game3cay.shared.model.GameActionRequest;
+import com.game3cay.shared.model.GameHistoryItem;
+import com.game3cay.shared.model.GameStartInfo;
+import com.game3cay.shared.model.GameStateSnapshot;
+import com.game3cay.shared.model.JoinRoomRequest;
+import com.game3cay.shared.model.LeaderboardItem;
+import com.game3cay.shared.model.PageRequest;
+import com.game3cay.shared.model.PageResult;
+import com.game3cay.shared.model.PlayAgainPrompt;
+import com.game3cay.shared.model.PlayerStateSnapshot;
+import com.game3cay.shared.model.ProfileResult;
+import com.game3cay.shared.model.RegisterRequest;
+import com.game3cay.shared.model.RoomChatEvent;
+import com.game3cay.shared.model.RoomSnapshot;
+import com.game3cay.shared.model.RoomSummary;
+import com.game3cay.shared.model.RoundResult;
+import com.game3cay.shared.model.UpdateProfileRequest;
 
 public final class PacketIO {
   private PacketIO() {}
@@ -32,8 +57,8 @@ public final class PacketIO {
     return input;
   }
 
-  public static Packet read(ObjectInputStream input) throws IOException, ClassNotFoundException {
-
+  public static Packet read(ObjectInputStream input)
+      throws IOException, ClassNotFoundException {
     if (!(input.readObject() instanceof Packet packet)) {
       throw new IOException("Dữ liệu không phải Packet");
     }
@@ -42,8 +67,8 @@ public final class PacketIO {
     return packet;
   }
 
-  public static void write(ObjectOutputStream output, Packet packet) throws IOException {
-
+  public static void write(ObjectOutputStream output, Packet packet)
+      throws IOException {
     validate(packet);
 
     synchronized (output) {
@@ -65,8 +90,8 @@ public final class PacketIO {
     if (packet == null
         || packet.getType() == null
         || packet.getProtocolVersion() != Packet.VERSION
-        || (packet.getRequestId() != null && !text(packet.getRequestId(), 64))) {
-
+        || (packet.getRequestId() != null
+            && !text(packet.getRequestId(), 64))) {
       throw new IOException("Packet sai định dạng hoặc phiên bản");
     }
 
@@ -74,14 +99,19 @@ public final class PacketIO {
 
     boolean valid =
         switch (packet.getType()) {
-          case PING, PONG -> data == null || data instanceof String s && s.length() <= 1000;
+          case PING, PONG ->
+              data == null || data instanceof String s && s.length() <= 1000;
 
-          case ECHO_REQUEST, SERVER_NOTICE -> data instanceof String s && text(s, 1000);
+          case ECHO_REQUEST, SERVER_NOTICE ->
+              data instanceof String s && text(s, 1000);
 
-          case ACK, LOGOUT, ROOM_LIST, LEAVE_ROOM, START_GAME_REQUEST, GET_PROFILE -> data == null;
+          case ACK, LOGOUT, ROOM_LIST, LEAVE_ROOM,
+              START_GAME_REQUEST, GET_PROFILE -> data == null;
 
           case LOGIN ->
-              data instanceof AuthRequest a && text(a.username(), 50) && text(a.password(), 128);
+              data instanceof AuthRequest a
+                  && text(a.username(), 50)
+                  && text(a.password(), 128);
 
           case REGISTER ->
               data instanceof RegisterRequest a
@@ -93,7 +123,9 @@ public final class PacketIO {
           case AUTH_RESULT -> data instanceof AuthResult;
 
           case ERROR ->
-              data instanceof Packet.ErrorPayload e && e.code() != null && text(e.message(), 500);
+              data instanceof Packet.ErrorPayload e
+                  && e.code() != null
+                  && text(e.message(), 500);
 
           case CREATE_ROOM ->
               data instanceof CreateRoomRequest r
@@ -107,9 +139,11 @@ public final class PacketIO {
                   && r.betAmount().scale() >= 0
                   && r.betAmount().scale() <= 2;
 
-          case JOIN_ROOM -> data instanceof JoinRoomRequest r && r.roomId() > 0;
+          case JOIN_ROOM, WATCH_ROOM ->
+              data instanceof JoinRoomRequest r && r.roomId() > 0;
 
           case SET_READY -> data instanceof Boolean;
+
           case CHANGE_ROOM_BET ->
               data instanceof java.math.BigDecimal amount
                   && amount.signum() > 0
@@ -118,7 +152,9 @@ public final class PacketIO {
                   && amount.precision() <= 15;
 
           case ROOM_UPDATED ->
-              data instanceof RoomSnapshot r && r.players() != null && r.players().size() <= 8;
+              data instanceof RoomSnapshot r
+                  && r.players() != null
+                  && r.players().size() <= 8;
 
           case ROOM_LIST_RESULT ->
               data instanceof List<?> list
@@ -126,7 +162,6 @@ public final class PacketIO {
                   && list.stream().allMatch(RoomSummary.class::isInstance);
 
           case CHAT_MESSAGE ->
-              // Cho request tới handler để trả mã lỗi nghiệp vụ nếu >500.
               data instanceof ChatMessage c
                       && c.content() != null
                       && c.content().length() <= 2000
@@ -143,57 +178,100 @@ public final class PacketIO {
                   && "SYSTEM".equals(e.message().type());
 
           case START_GAME ->
-              data instanceof GameStartInfo g && g.roomId() > 0 && text(g.roundId(), 64);
+              data instanceof GameStartInfo g
+                  && g.roomId() > 0
+                  && text(g.roundId(), 64);
+
           case DEAL_CARD ->
               data instanceof DealCardPayload d
                   && text(d.roundId(), 64)
                   && d.cards() != null
                   && d.cards().size() == 3;
+
           case GAME_ACTION ->
-              data instanceof GameActionRequest g && text(g.roundId(), 64) && g.action() != null;
+              data instanceof GameActionRequest g
+                  && text(g.roundId(), 64)
+                  && g.action() != null;
+
           case GAME_UPDATED ->
               data instanceof GameStateSnapshot g
                   && text(g.roundId(), 64)
                   && g.activePlayers() != null
                   && g.activePlayers().size() <= 8;
+
           case PLAYER_STATE ->
               data instanceof PlayerStateSnapshot p
                   && text(p.roundId(), 64)
                   && p.myCards() != null
                   && p.myCards().size() == 3;
+
           case BET_UPDATED ->
               data instanceof BetStateSnapshot b
                   && b.playerBets() != null
                   && b.playerBets().size() <= 8;
+
           case ROUND_RESULT ->
               data instanceof RoundResult r
                   && r.playerResults() != null
                   && r.playerResults().size() <= 8
                   && r.betHistory() != null
                   && r.betHistory().size() <= 1024;
+
           case PLAY_AGAIN_PROMPT -> data instanceof PlayAgainPrompt;
           case PLAY_AGAIN_VOTE -> data instanceof Boolean;
+
           case GET_HISTORY, GET_LEADERBOARD -> data instanceof PageRequest;
+
           case HISTORY_RESULT ->
               data instanceof PageResult<?> p
                   && p.items() != null
                   && p.items().size() <= 100
                   && p.items().stream().allMatch(GameHistoryItem.class::isInstance);
+
           case LEADERBOARD_RESULT ->
               data instanceof PageResult<?> p
                   && p.items() != null
                   && p.items().size() <= 100
                   && p.items().stream().allMatch(LeaderboardItem.class::isInstance);
+
           case PROFILE_RESULT -> data instanceof ProfileResult;
+
           case UPDATE_PROFILE ->
               data instanceof UpdateProfileRequest p
                   && optional(p.displayName(), 100)
                   && optional(p.email(), 100)
                   && optional(p.avatarUrl(), 255);
+
           case CHANGE_PASSWORD ->
               data instanceof ChangePasswordRequest p
                   && text(p.currentPassword(), 128)
                   && text(p.newPassword(), 128);
+
+          case ADMIN_REQUEST ->
+              data instanceof AdminPayload.Request r
+                  && r.action() != null
+                  && r.page() >= 0
+                  && r.page() <= 1_000_000
+                  && optional(r.value(), 128)
+                  && (r.amount() == null
+                      || r.amount().precision() <= 15
+                          && r.amount().scale() >= 0
+                          && r.amount().scale() <= 2);
+
+          case ADMIN_RESULT ->
+              data instanceof AdminPayload.Response r
+                  && r.accounts() != null
+                  && r.accounts().size() <= 20;
+
+          case ADMIN_TABLE_CARDS ->
+              data instanceof AdminPayload.TableCards r
+                  && r.roomId() > 0
+                  && text(r.roundId(), 64)
+                  && r.players() != null
+                  && r.players().size() <= 8
+                  && r.players().stream()
+                      .allMatch(p -> p.cards() != null && p.cards().size() == 3);
+
           case MUTE_PLAYER -> data instanceof Long uid && uid > 0;
         };
 

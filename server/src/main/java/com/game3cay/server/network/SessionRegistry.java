@@ -1,11 +1,13 @@
 package com.game3cay.server.network;
 
-import com.game3cay.shared.network.Packet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.game3cay.shared.network.Packet;
+
 public final class SessionRegistry {
-  private final ConcurrentHashMap<Long, ClientHandler> online = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Long, ClientHandler> online =
+      new ConcurrentHashMap<>();
 
   public boolean bind(long userId, ClientHandler handler) {
     return online.putIfAbsent(userId, handler) == null;
@@ -15,10 +17,16 @@ public final class SessionRegistry {
     online.remove(userId, handler);
   }
 
+  public void disconnectUser(long userId) {
+    var handler = online.get(userId);
+    if (handler != null) {
+      handler.close();
+    }
+  }
+
   public void broadcast(List<Long> recipients, Packet packet) {
     for (long id : recipients) {
       ClientHandler handler = online.get(id);
-
       if (handler != null) {
         handler.send(packet);
       }
