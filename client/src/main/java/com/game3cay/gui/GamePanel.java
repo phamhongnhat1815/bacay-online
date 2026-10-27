@@ -11,23 +11,18 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
-import java.awt.event.KeyEvent;
 import java.io.Serial;
 import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.prefs.Preferences;
-import javax.swing.AbstractAction;
-import javax.swing.ActionMap;
-import javax.swing.InputMap;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
-import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
@@ -118,12 +113,12 @@ public final class GamePanel extends JPanel {
         table.setWaitingOverlay(waitingPanel);
 
         // Row 1: Các nút hành động chính
-        call.setToolTipText("Theo cược (Phím tắt: Space hoặc C)");
-        fold.setToolTipText("Úp bài bỏ cuộc (Phím tắt: F)");
-        allIn.setToolTipText("Tất tay toàn bộ số dư (Phím tắt: A)");
-        raise.setToolTipText("Xác nhận tố đến mức đã nhập (Phím tắt: R hoặc Enter)");
-        eye.setToolTipText("Ẩn hoặc hiện ba lá bài của bạn (Phím tắt: H)");
-        squeezeBtn.setToolTipText("Mở chế độ Nặn bài để hé mở điểm số (Phím tắt: S)");
+        call.setToolTipText("Theo cược");
+        fold.setToolTipText("Úp bài bỏ cuộc");
+        allIn.setToolTipText("Tất tay toàn bộ số dư");
+        raise.setToolTipText("Xác nhận tố đến mức đã nhập");
+        eye.setToolTipText("Ẩn hoặc hiện ba lá bài của bạn");
+        squeezeBtn.setToolTipText("Mở chế độ Nặn bài để hé mở điểm số");
         squeezeBtn.addActionListener(e -> openCardSqueeze());
 
 
@@ -132,6 +127,9 @@ public final class GamePanel extends JPanel {
         allIn.setPreferredSize(new Dimension(95, 40));
         raiseTo.setPreferredSize(new Dimension(85, 40));
         Theme.field(raiseTo);
+        raiseTo.addActionListener(e -> {
+            if (raise.isEnabled()) raise.doClick();
+        });
         raise.setPreferredSize(new Dimension(95, 40));
 
         for (var component : new JComponent[] {fold, call, allIn, raiseTo, raise}) {
@@ -168,7 +166,6 @@ public final class GamePanel extends JPanel {
             table.hideCards(hidden);
         });
 
-        setupKeyBindings();
         clear();
     }
 
@@ -552,48 +549,7 @@ public final class GamePanel extends JPanel {
         }
     }
 
-    private void setupKeyBindings() {
-        InputMap im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-        ActionMap am = getActionMap();
 
-        bindKey(im, am, "ACTION_CALL_SPACE", KeyEvent.VK_SPACE, () -> {
-            if (!raiseTo.hasFocus() && call.isEnabled()) call.doClick();
-        });
-        bindKey(im, am, "ACTION_CALL_C", KeyEvent.VK_C, () -> {
-            if (!raiseTo.hasFocus() && call.isEnabled()) call.doClick();
-        });
-        bindKey(im, am, "ACTION_FOLD_F", KeyEvent.VK_F, () -> {
-            if (!raiseTo.hasFocus() && fold.isEnabled()) fold.doClick();
-        });
-        bindKey(im, am, "ACTION_ALLIN_A", KeyEvent.VK_A, () -> {
-            if (!raiseTo.hasFocus() && allIn.isEnabled()) allIn.doClick();
-        });
-        bindKey(im, am, "ACTION_RAISE_R", KeyEvent.VK_R, () -> {
-            if (!raiseTo.hasFocus() && raise.isEnabled()) raise.doClick();
-        });
-        bindKey(im, am, "ACTION_EYE_H", KeyEvent.VK_H, () -> {
-            if (!raiseTo.hasFocus() && eye.isEnabled()) eye.doClick();
-        });
-        bindKey(im, am, "ACTION_SQUEEZE_S", KeyEvent.VK_S, () -> {
-            if (!raiseTo.hasFocus() && squeezeBtn.isEnabled() && squeezeBtn.isVisible()) openCardSqueeze();
-        });
-
-        raiseTo.addActionListener(e -> {
-            if (raise.isEnabled()) raise.doClick();
-        });
-    }
-
-    private void bindKey(InputMap im, ActionMap am, String name, int keyCode, Runnable action) {
-        im.put(KeyStroke.getKeyStroke(keyCode, 0), name);
-        am.put(name, new AbstractAction() {
-            @Serial
-            private static final long serialVersionUID = 1L;
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                action.run();
-            }
-        });
-    }
 
     public GameTablePanel table() {
         return table;
