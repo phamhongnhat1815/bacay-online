@@ -1,86 +1,226 @@
-# Ba Cây Online
+# ♠ Ba Cây Online
 
-Bản game Java Swing dùng bộ asset của nhóm, có đăng nhập/đăng ký, 20 bàn cố định, bài và lượt chơi trên bàn, chat, lịch sử, hồ sơ và bảng xếp hạng. Điểm dùng trong game là điểm giải trí.
+Trò chơi bài **Ba Cây Online** nhiều người chơi qua mạng nội bộ / LAN, được xây dựng trên nền tảng **Java 21**, giao diện đồ họa **Java Swing** thuần với phong cách đồ họa sang trọng (Royal Navy & Gold), kết nối mạng socket nhị phân tùy biến **Packet v2** bảo mật, và lưu trữ dữ liệu bền vững trên **MySQL 8.0+**.
 
-## Chạy ngay trên Windows
+---
 
-1. Cài **JDK 21** và **MySQL 8.0.16 trở lên**. Kiểm tra `java -version` trong PowerShell. Máy chỉ chơi client không cần MySQL.
-2. **Tắt server cũ.** Mở MySQL Workbench, đăng nhập MySQL bằng tài khoản của máy bạn, mở `database/setup.sql` rồi chạy **toàn bộ file** (nút tia sét / Ctrl+Shift+Enter). Chỉ cần file này; bỏ qua các hướng dẫn M1–M6 cũ. Database vẫn là `bacay_online`, giữ tài khoản và lịch sử đã có. Tài khoản cũ có 0 điểm được cấp 1.000 điểm một lần khi nâng cấp; tài khoản mới luôn có 1.000 điểm. Chạy lại SQL không cộng thêm điểm.
-3. Mở **Start-Server.cmd** ở thư mục gốc, nhập mật khẩu **MySQL** khi được hỏi. User mặc định `root`. Giữ cửa sổ này mở.
-4. Mở **Start-Client.cmd**. Đăng ký hoặc đăng nhập bằng **tài khoản game**. Đăng ký xong tự vào sảnh. Mật khẩu MySQL chỉ nhập ở cửa sổ server.
+## 📑 Mục Lục
+1. [Điểm Nổi Bật](#-điểm-nổi-bật)
+2. [Ngăn Xếp Công Nghệ (Tech Stack)](#-ngăn-xếp-công-nghệ-tech-stack)
+3. [Cấu Trúc Thư Mục Dự Án](#-cấu-trúc-thư-mục-dự-án)
+4. [Hướng Dẫn Cài Đặt Nhanh](#-hướng-dẫn-cài-đặt-nhanh)
+5. [Thiết Lập Cơ Sở Dữ Liệu](#-thiết-lập-cơ-sở-dữ-liệu)
+6. [Chơi Trong Mạng Nội Bộ (LAN / Wi-Fi)](#-chơi-trong-mạng-nội-bộ-lan--wi-fi)
+7. [Biến Môi Trường & Cấu Hình Máy Chủ](#-biến-môi-trường--cấu-hình-máy-chủ)
+8. [Đóng Gói & Xây Dựng Dự Án](#-đóng-gói--xây-dựng-dự-án)
+9. [Xử Lý Lỗi Thường Gặp (Troubleshooting)](#-xử-lý-lỗi-thường-gặp-troubleshooting)
+10. [Tài Liệu Kỹ Thuật Chi Tiết](#-tài-liệu-kỹ-thuật-chi-tiết)
 
-Gói có sẵn `dist/client.jar`, `dist/server.jar`, `dist/shared.jar` và MySQL JDBC driver. **Không cần build hay chạy công cụ thử kết nối để chơi.** Nên giải nén sang một thư mục mới, ví dụ `C:\Games\bacay-online`, để tránh dùng lẫn JAR của bản trước.
+---
 
-## Vào chơi
+## ✨ Điểm Nổi Bật
 
-- Sảnh luôn có **Bàn 1 → Bàn 20**, theo đúng thứ tự. Bàn có người hiện số người, bàn đang chơi hoặc đầy sẽ tạm khóa nút vào. Trạng thái tự cập nhật.
-- Bấm vào một bàn đang chờ. Người vào đầu tiên làm chủ bàn; khi chủ bàn rời đi, người còn lại được chuyển quyền.
-- Mọi người bấm **Sẵn sàng**. Cần ít nhất 2 người đủ 10 điểm; chủ bàn bấm **Bắt đầu**. Mỗi bàn tối đa 8 người.
-- Bạn nhận 3 lá, hiển thị phía dưới. Bài của người khác úp trên mặt bàn. Khi kết thúc, các bài được phép công khai mới lật lên.
-- Đến lượt chọn **Kiểm tra / Theo**, **Tố đến**, **Úp bài** hoặc **Tất tay**. “Tố đến” là **tổng điểm bạn góp trong ván**, gồm cả điểm cơ bản. Hết 30 giây sẽ tự úp bài.
-- Header luôn hiện điểm của bạn. Kết quả ghi lịch sử và bảng xếp hạng. Bấm **Sẵn sàng** để chơi ván tiếp theo.
-- Có thể bật/tắt âm thanh, ẩn/hiện bài trên máy mình, xem luật, hồ sơ và đổi mật khẩu. Rời bàn mới sửa được tên/email.
+- **Giao diện Casino Royal Navy & Gold:** Thiết kế đồ họa Swing tỉ mỉ, khử răng cưa chất lượng cao (`bicubic` resampling), bảng nỉ xanh oval, ghế xoay 8 vị trí, avatar người chơi và hiệu ứng chia bài mượt mà.
+- **Hệ thống 20 bàn chơi cố định:** Tự động đồng bộ hóa trạng thái phòng theo thời gian thực (trống, đang chờ, đang chơi, đủ người).
+- **Luật Ba Cây hoàn chỉnh:** Xếp bài theo thứ tự Sáp > Liêng > Bồ Đội > Điểm; so chất theo thứ tự Việt Nam Rô ♦ > Cơ ♥ > Bích ♠ > Chuồn ♣.
+- **Vòng cược thời gian thực:** Đầy đủ các thao tác Kiểm tra (Check), Theo (Call), Tố đến (Raise to), Tất tay (All-in), Úp bài (Fold).
+- **Cơ chế bảo vệ bàn chơi:** Giới hạn thời gian suy nghĩ 30 giây/lượt (tự động úp bài khi hết giờ); tự động phân chia quỹ cược thành Pot chính và các Pot phụ (Side Pots) cho người chơi tất tay.
+- **Chống gian lận (Zero Knowledge):** Máy chủ không bao giờ gửi thông tin bài của đối thủ về máy client cho đến vòng lật bài (Showdown).
+- **Trang Quản Trị Độc Lập (Admin Portal):** Module `admin` Swing riêng biệt cho quản trị viên, cách ly hoàn toàn khỏi client người chơi. Giám sát 20 bàn chơi thời gian thực, quản lý & khóa tài khoản, điều chỉnh điểm số có kiểm toán, phát thông báo toàn server (Broadcast) và tra cứu sổ cái tài chính.
+- **Bảo toàn dữ liệu đa tầng:** Giao dịch cơ sở dữ liệu ACID chống Deadlock, sổ cái kép kiểm toán (`play_ledger`, `admin_adjustments`), cùng cơ chế Write-Ahead Logging (WAL) tự động khôi phục kết quả ván bài nếu mất kết nối database.
 
-Mở hai client và dùng hai tài khoản khác nhau để chơi trên cùng máy. Một tài khoản chỉ đăng nhập một nơi. Game có luật Sáp > Liêng > Bồ đội > Điểm như yêu cầu của nhóm; chi tiết ở `Game_Rules.md` và nút **Luật chơi**.
+---
 
-## Chơi trong cùng Wi-Fi / LAN
+## 🛠 Ngăn Xếp Công Nghệ (Tech Stack)
 
-- Chỉ một máy chạy MySQL và server. Cho phép Java/server qua Windows Firewall trên mạng riêng, TCP cổng **8888**.
-- Xem IPv4 của máy server bằng `ipconfig`.
-- Trên máy khác, mở client, bấm **Máy chủ** ở màn đăng nhập, nhập IPv4 máy server và cổng `8888`, lưu rồi đăng nhập. Máy client dùng bộ `dist` và JDK 21.
-- Cũng có thể chạy `Start-Client.cmd 192.168.1.10 8888` để đặt địa chỉ cho lần chạy đó.
-- Đây là cấu hình dành cho máy cá nhân/LAN của nhóm. Server TCP hiện tại chưa dùng TLS; triển khai qua Internet cần bổ sung TLS và cấu hình vận hành phù hợp.
+Dự án tuyệt đối tuân thủ ngăn xếp công nghệ thuần túy, không sử dụng framework trung gian cồng kềnh:
 
-## Cấu hình máy chủ
+| Thành phần | Công nghệ / Thư viện | Mô tả |
+|---|---|---|
+| **Ngôn ngữ** | **Java 21 LTS** | Sử dụng Records, Pattern Matching, Sealed Interfaces, Virtual Threads ready |
+| **Giao diện** | **Java Swing thuần & Java 2D** | Khử răng cưa, nạp asset bất đồng bộ, âm thanh stereo |
+| **Quản lý dự án** | **Maven Multi-Module** | Gồm 4 module: `shared`, `server`, `client`, `admin` |
+| **Giao thức mạng** | **Custom Binary Packet v2** | Gói tin nhị phân trên nền TCP Socket, bảo mật bằng `ObjectInputFilter` |
+| **Cơ sở dữ liệu** | **MySQL 8.0.16+** | Pure JDBC với `mysql-connector-j`, giao dịch ACID với khóa `FOR UPDATE` |
+| **Bảo mật mật khẩu** | **PBKDF2WithHmacSHA256** | Salt ngẫu nhiên 16 bytes, 600.000 vòng lặp |
 
-`Start-Server.cmd` mặc định dùng MySQL `localhost:3306`, database `bacay_online`, user `root`. Mật khẩu được hỏi lúc chạy, không ghi trong source.
+---
 
-Ví dụ dùng MySQL user khác:
+## 📁 Cấu Trúc Thư Mục Dự Án
 
-```powershell
-.\Start-Server.cmd -DbUser bacay_app
+```
+bacay-online/
+├── client/                     # Module ứng dụng Swing Client
+│   └── src/main/java/com/game3cay/
+│       ├── RunClient.java      # Điểm khởi chạy Client
+│       ├── controller/         # Điều phối sự kiện mạng và EDT Swing
+│       ├── gui/                # Các thành phần giao diện (MainFrame, Table, Theme, Sound,...)
+│       └── network/            # SocketClient bất đồng bộ với Worker Threads
+├── admin/                      # Module ứng dụng Swing Admin Portal (Độc lập)
+│   └── src/main/java/com/game3cay/admin/
+│       ├── RunAdmin.java       # Điểm khởi chạy Admin
+│       ├── controller/         # Điều phối sự kiện Admin & Polling scheduler
+│       ├── gui/                # Giao diện quản trị (Dashboard, Users, Rooms, Ledger, Auth)
+│       └── network/            # AdminSocketClient kết nối TCP Socket
+├── server/                     # Module máy chủ Ba Cây Server
+│   └── src/main/java/com/game3cay/server/
+│       ├── ServerApplication.java # Điểm khởi chạy Server
+│       ├── bus/                # Business Logic (UserBUS, GameBUS)
+│       ├── dal/                # Data Access Layer & JDBC Connection Provider
+│       ├── game/               # Luật bài (HandEvaluator, DefaultGameEngine, WAL)
+│       ├── network/            # Quản lý phiên và phân luồng Socket TCP (ClientHandler)
+│       └── room/               # Điều phối 20 bàn chơi (RoomManager)
+├── shared/                     # Module dùng chung giữa Client & Server
+│   └── src/main/java/com/game3cay/shared/
+│       ├── model/              # Các Record DTOs (Card, Hand, Snapshots, Payloads)
+│       ├── network/            # Định nghĩa Packet v2, PacketIO, ErrorCode
+│       └── security/           # Tiện ích mã hóa mật khẩu PBKDF2
+├── database/                   # Kịch bản cơ sở dữ liệu
+│   └── setup.sql               # File duy nhất cài mới hoặc nâng cấp database
+├── dist/                       # Thư mục chứa gói chạy sẵn đã được đóng gói
+│   ├── client.jar              # JAR chạy Client
+│   ├── admin.jar               # JAR chạy Admin Portal
+│   ├── server.jar              # JAR chạy Server
+│   ├── shared.jar              # Thư viện dùng chung
+│   ├── lib/                    # Thư viện MySQL JDBC Driver
+│   └── database/setup.sql      # Kịch bản SQL đi kèm gói chạy
+├── docs/                       # Tài liệu kỹ thuật chuyên sâu
+│   ├── Architecture.md         # Kiến trúc hệ thống, luồng dữ liệu & WAL
+│   ├── Protocol.md             # Đặc tả gói tin nhị phân Packet v2 & ErrorCode
+│   └── Database.md             # Thiết kế CSDL quan hệ, ERD & Chỉ mục
+├── scripts/                    # Scripts tự động hóa Windows (Build & Run)
+├── Game_Rules.md               # Quy định chi tiết luật chơi bài Ba Cây
+├── Build.cmd                   # Script đóng gói dự án ra dist/ trên Windows
+├── Start-Server.cmd            # Khởi chạy Server nhanh
+├── Start-Client.cmd            # Khởi chạy Client nhanh
+├── Start-Admin.cmd             # Khởi chạy Admin Portal nhanh
+└── pom.xml                     # Maven Root Aggregator POM
 ```
 
-Đổi cổng game / URL MySQL:
+---
 
-```powershell
-.\Start-Server.cmd -Port 8889 -DbUser bacay_app -DbUrl 'jdbc:mysql://localhost:3306/bacay_online?connectTimeout=5000&socketTimeout=10000&connectionTimeZone=UTC'
+## 🚀 Hướng Dẫn Cài Đặt Nhanh
+
+### Yêu Cầu Môi Trường
+1. **JDK 21 (LTS)** trở lên (kiểm tra bằng lệnh `java -version`).
+2. **MySQL Community Server 8.0.16** trở lên (chỉ cần cài trên máy làm server).
+
+### Bước 1: Khởi Tạo Cơ Sở Dữ Liệu
+1. Mở công cụ quản trị (ví dụ: **MySQL Workbench** hoặc dòng lệnh `mysql`).
+2. Mở file [`database/setup.sql`](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/database/setup.sql).
+3. Thực thi **toàn bộ file** (nhấn biểu tượng tia sét hoặc tổ hợp phím `Ctrl + Shift + Enter`).
+4. Script sẽ tạo cơ sở dữ liệu `bacay_online`, các bảng và thiết lập số dư ban đầu 1.000 điểm cho người chơi.
+
+### Bước 2: Chạy Máy Chủ (Server)
+Nhấp đúp chuột vào file **`Start-Server.cmd`** tại thư mục gốc của dự án.
+- Nhập mật khẩu MySQL của máy bạn khi được yêu cầu.
+- Cửa sổ console sẽ hiển thị thông báo `[SERVER] Listening on 0.0.0.0:8888` sẵn sàng đón nhận kết nối.
+
+### Bước 3: Chạy Ứng Dụng Người Chơi (Client)
+Nhấp đúp chuột vào file **`Start-Client.cmd`**.
+- Đăng ký tài khoản mới (tặng ngay 1.000 điểm giải trí) hoặc đăng nhập tài khoản có sẵn.
+- Chọn một trong 20 bàn chơi tại sảnh và bấm **Sẵn sàng** để bắt đầu chơi.
+- *Mẹo:* Bạn có thể mở nhiều cửa sổ `Start-Client.cmd` để thử nghiệm chơi đối kháng nhiều người trên cùng một máy tính.
+
+### Bước 4: Chạy Trang Quản Trị (Admin Portal)
+Nhấp đúp chuột vào file **`Start-Admin.cmd`**.
+- **Tài khoản quản trị mặc định:**
+  - Tên đăng nhập: `admin`
+  - Mật khẩu: `admin@123`
+- **Tính năng quản trị:**
+  - **Dashboard:** Thống kê tổng số tài khoản, số người online, số bàn đang hoạt động, tổng điểm lưu hành và ván đấu hôm nay; phát thông báo toàn server.
+  - **Quản lý người chơi:** Tìm kiếm, lọc theo vai trò/trạng thái, Khóa/Mở khóa tài khoản, điều chỉnh số dư kèm lý do kiểm toán.
+  - **Giám sát bàn chơi:** Xem danh sách 20 bàn chơi, số người, pot hiện tại, trạng thái ván và nút buộc đặt lại bàn (Force Reset Room).
+  - **Sổ cái tài chính:** Tra cứu toàn bộ lịch sử biến động số dư và thao tác điều chỉnh điểm của admin.
+
+---
+
+## 🌐 Chơi Trong Mạng Nội Bộ (LAN / Wi-Fi)
+
+Hệ thống hỗ trợ chơi nhiều máy trong cùng một mạng LAN hoặc Wi-Fi văn phòng / gia đình:
+
+```mermaid
+flowchart LR
+    A[Client Máy 1<br/>192.168.1.15] -- TCP 8888 --> S[Server & MySQL<br/>192.168.1.10]
+    B[Client Máy 2<br/>192.168.1.20] -- TCP 8888 --> S
+    C[Client Máy Chủ<br/>localhost] -- TCP 8888 --> S
 ```
 
-Đổi cổng tương ứng ở client. Nếu MySQL báo `Public Key Retrieval is not allowed`, cấu hình MySQL có TLS hoặc, với MySQL trên localhost/LAN tin cậy, thêm `&allowPublicKeyRetrieval=true` vào URL. Mặc định dùng thông số phù hợp MySQL cục bộ để chạy ngay.
+1. **Trên máy chủ (Chạy Server):**
+   - Mở Windows Firewall, tạo Inbound Rule cho phép cổng **TCP 8888**.
+   - Tra cứu địa chỉ IPv4 của máy chủ bằng lệnh `ipconfig` (ví dụ: `192.168.1.10`).
+   - Khởi chạy server bằng `Start-Server.cmd`.
+2. **Trên các máy người chơi (Client):**
+   - Mở ứng dụng bằng `Start-Client.cmd`.
+   - Tại màn hình Đăng nhập, bấm vào nút **Máy chủ**, điền địa chỉ IPv4 của máy server (ví dụ: `192.168.1.10`) và cổng `8888`, sau đó bấm Lưu.
+   - Hoặc khởi chạy nhanh bằng dòng lệnh:
+     ```cmd
+     Start-Client.cmd 192.168.1.10 8888
+     ```
 
-Nếu server không mở: kiểm tra MySQL đã chạy, đã chạy trọn `setup.sql`, mật khẩu MySQL đúng, JDK 21 nằm trong PATH và cổng 8888 chưa bị bản server cũ chiếm. Đóng bản cũ trước khi mở bản mới.
+---
 
-## Source và build lại
+## ⚙ Biến Môi Trường & Cấu Hình Máy Chủ
 
-| Thư mục / file | Nội dung |
-|---|---|
-| `client/` | Toàn bộ giao diện Swing, asset, âm thanh và kết nối client |
-| `server/` | Tài khoản, 20 bàn, luật game, xử lý lượt và lưu MySQL |
-| `shared/` | Các kiểu dữ liệu và giao thức chung |
-| `database/setup.sql` | Một file cài mới hoặc nâng cấp database |
-| `dist/` | JAR đã build và các file chạy sẵn |
-| `scripts/` | Script build / chạy Windows |
-| `docs/Architecture.md` | Luồng dữ liệu và vị trí sửa các phần chính |
+Bạn có thể tùy biến cấu hình kết nối thông qua tham số dòng lệnh hoặc biến môi trường:
 
-Muốn chỉnh code: mở **thư mục gốc có `pom.xml`** bằng IntelliJ IDEA, chọn JDK 21 và import Maven. Sửa xong chạy **Build.cmd** để build/test và cập nhật `dist`; sau đó mở lại server/client. Lần build đầu cần Internet để Maven Wrapper tải dependencies. Build chỉ dùng thông tin test riêng, không tự sửa database đang chơi.
+| Tên biến môi trường | Tham số dòng lệnh | Giá trị mặc định | Mô tả |
+|---|---|---|---|
+| `BACAY_DB_HOST` | `-DbHost` | `localhost` | Địa chỉ máy chủ MySQL |
+| `BACAY_DB_PORT` | `-DbPort` | `3306` | Cổng kết nối MySQL |
+| `BACAY_DB_NAME` | `-DbName` | `bacay_online` | Tên cơ sở dữ liệu |
+| `BACAY_DB_USER` | `-DbUser` | `root` | Tên tài khoản MySQL |
+| `BACAY_DB_PASSWORD` | `-DbPassword` | *(Hỏi lúc mở)* | Mật khẩu MySQL |
+| `BACAY_SERVER_PORT` | `-Port` | `8888` | Cổng TCP Server lắng nghe |
 
+Ví dụ khởi chạy Server với tài khoản MySQL riêng biệt:
 ```powershell
-.\Build.cmd
+.\Start-Server.cmd -DbUser bacay_app -DbPassword "MySecurePass123" -Port 8888
 ```
 
-Hoặc trên Linux/macOS:
+---
 
+## 📦 Đóng Gói & Xây Dựng Dự Án
+
+Nếu có bất kỳ thay đổi nào trong mã nguồn Java, bạn có thể thực hiện build và đóng gói lại toàn bộ dự án:
+
+### Trên Windows:
+Nhấp đúp vào **`Build.cmd`** hoặc chạy trong PowerShell:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Build.ps1
+```
+
+### Trên Linux / macOS:
 ```bash
-bash server/mvnw -f pom.xml clean install
+./mvnw clean install
 ```
 
-Chạy bằng IntelliJ: `com.game3cay.server.ServerApplication` (module server, thiết lập `BACAY_DB_USER`, `BACAY_DB_PASSWORD`, tùy chọn `BACAY_DB_URL`) và `com.game3cay.RunClient` (module client). Client không có thông tin đăng nhập MySQL.
+Toàn bộ artifact sẽ được tự động biên dịch, chạy qua 29 bài kiểm thử đơn vị & tích hợp (Unit & Integration Tests), và sao chép đầy đủ các file chạy vào thư mục `dist/`.
 
-## Lưu dữ liệu
+---
 
-Kết quả được ghi transaction vào các bảng `play_*`, chống ghi trùng theo ván. Server giữ kết quả đang chờ trong `dist/data/pending-results` và thử ghi lại nếu MySQL tạm ngắt. Giữ thư mục này khi chuyển bản cài có kết quả chưa lưu. Điểm chưa ghi xong sẽ bị khóa cho đến khi lưu thành công.
+## ❓ Xử Lý Lỗi Thường Gặp (Troubleshooting)
 
-Nên dừng server khi không có ván đang chơi. Nếu dừng giữa ván, ván đang diễn ra không có kết quả và không trừ điểm trong MySQL; các ván đã chốt kết quả được khôi phục từ hàng chờ khi mở lại. Không chạy hai server cùng database/thư mục dữ liệu.
+### 1. `Public Key Retrieval is not allowed`
+- **Nguyên nhân:** MySQL 8.0 sử dụng cơ chế xác thực `caching_sha2_password` mà không bật TLS.
+- **Cách khắc phục:** Chạy server với tham số:
+  ```powershell
+  .\Start-Server.cmd -DbUrl "jdbc:mysql://localhost:3306/bacay_online?allowPublicKeyRetrieval=true&useSSL=false"
+  ```
 
-Asset hình ảnh và âm thanh được lấy từ `bacay-assets-room.zip` do nhóm cung cấp. Các màn hình tham khảo trong asset không được dùng thay cho giao diện tương tác.
+### 2. `Address already in use: bind`
+- **Nguyên nhân:** Cổng 8888 đang bị chiếm bởi một phiên bản server cũ đang chạy ngầm.
+- **Cách khắc phục:** Đóng tất cả cửa sổ server cũ hoặc tìm và ngắt tiến trình Java qua Task Manager (hoặc lệnh `netstat -ano | findstr 8888`).
+
+### 3. Client không kết nối được tới Server trong mạng LAN
+- **Nguyên nhân:** Tường lửa Windows Defender trên máy server đang chặn kết nối đến cổng 8888.
+- **Cách khắc phục:** Mở **Windows Defender Firewall with Advanced Security** $\rightarrow$ chọn **Inbound Rules** $\rightarrow$ Thêm rule cho phép **Port 8888 / TCP**.
+
+---
+
+## 📚 Tài Liệu Kỹ Thuật Chi Tiết
+
+- 📖 [**Luật Chơi Ba Cây** (`Game_Rules.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/Game_Rules.md): Quy định chi tiết về thứ bậc Sáp, Liêng, Bồ Đội, Điểm, cơ chế so chất Rô > Cơ > Bích > Chuồn và các mức cược.
+- 🏛 [**Kiến Trúc Hệ Thống** (`docs/Architecture.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Architecture.md): Sơ đồ phân tầng 3 module, mô hình phân luồng Swing EDT, giao dịch ACID và cơ chế Write-Ahead Log.
+- 📡 [**Đặc Tả Giao Thức Mạng** (`docs/Protocol.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Protocol.md): Chi tiết khung nhị phân Packet v2, bộ lọc tuần tự hóa `ObjectInputFilter`, sơ đồ tuần tự và bảng mã `ErrorCode`.
+- 🗄 [**Thiết Kế Cơ Sở Dữ Liệu** (`docs/Database.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Database.md): Sơ đồ ERD quan hệ thực thể, ràng buộc toàn vẹn dữ liệu, chống deadlock và kịch bản khởi tạo.

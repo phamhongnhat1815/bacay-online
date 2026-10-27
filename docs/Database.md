@@ -1,293 +1,201 @@
-# Database và BUS tài khoản M2
+# Thiết Kế Cơ Sở Dữ Liệu (Database Schema)
 
-`JdbcUserBUS` cung cấp đăng ký, xác thực và đọc hồ sơ bằng MySQL/JDBC.
+Tài liệu này đặc tả chi tiết lược đồ cơ sở dữ liệu quan hệ **MySQL 8.0.16+** của hệ thống **Ba Cây Online**, các ràng buộc toàn vẹn, chỉ mục tối ưu hóa và quy trình di chuyển dữ liệu.
 
-Trong bản ghép M1–M3, `ServerApplication` đã khởi tạo BUS và truyền cho các `ClientHandler`. Client Swing gửi yêu cầu tài khoản qua TCP; handler gọi BUS, truy cập database và trả kết quả bằng các DTO của module shared.
+---
 
-`SessionRegistry` quản lý phiên online. `RoomManager` quản lý phòng và chat trong RAM.
+## 1. Sơ Đồ Quan Hệ Thực Thể (ERD)
 
-Các hàm `updateProfile`, `changePassword` và `updateBalance` giữ nguyên interface và trả `NOT_IMPLEMENTED`. Chưa triển khai lưu kết quả, lịch sử, leaderboard hoặc nghiệp vụ cược.
+```mermaid
+erDiagram
+    users ||--o{ play_results : "participates"
+    users ||--o{ admin_adjustments : "receives"
+    play_rounds ||--|{ play_results : "contains"
+    play_rounds ||--o{ play_pots : "allocates"
+    play_pots ||--|{ play_pot_players : "qualifies"
+    play_results ||--|{ play_cards : "deals"
+    play_results ||--o{ play_bets : "actions"
+    play_results ||--|| play_ledger : "audits"
+    play_results ||--o{ play_pot_players : "contends"
 
-## 1. Yêu cầu môi trường
+    users {
+        BIGINT id PK "Auto Increment"
+        VARCHAR username UK "Unique ASCII (50)"
+        VARCHAR password_hash "PBKDF2 Hash"
+        VARCHAR display_name "Tên hiển thị (100)"
+        VARCHAR email UK "Email duy nhất (100)"
+        VARCHAR role "USER / ADMIN (Default USER)"
+        DECIMAL balance "Số dư (>= 0, Default 1000.00)"
+        VARCHAR status "ACTIVE / BLOCKED"
+        INT total_games "Số ván đã chơi"
+        INT total_wins "Số ván thắng"
+        INT total_losses "Số ván thua"
+        TIMESTAMP created_at "Thời điểm tạo"
+        TIMESTAMP updated_at "Thời điểm cập nhật"
+    }
 
-- JDK 21.
-- Maven hoặc Maven Wrapper trong thư mục `server`.
-- MySQL 8.0.16 trở lên.
-- JDBC driver `mysql-connector-j`, đã khai báo trong `server/pom.xml`.
+    play_rounds {
+        BIGINT id PK "Auto Increment"
+        VARCHAR round_id UK "UUID v4 định danh ván"
+        VARCHAR content_hash "Hash kiểm tra toàn vẹn"
+        BIGINT runtime_room_id "Mã bàn (1-20)"
+        VARCHAR room_name "Tên bàn chơi"
+        DECIMAL ante "Mức cược cơ bản"
+        VARCHAR status "FINISHED / CANCELLED"
+        BIGINT ended_at "Epoch milliseconds kết thúc"
+    }
 
-Luồng hiện tại sử dụng JDBC trực tiếp. `application.yaml` không được TCP server đọc.
+    play_results {
+        VARCHAR round_id PK,FK "Mã ván bài"
+        BIGINT user_id PK,FK "Mã người chơi"
+        VARCHAR display_name "Tên tại thời điểm chơi"
+        INT placement "Thứ hạng (1..8)"
+        VARCHAR outcome "WIN / LOSE / DRAW / FOLD / CANCELLED"
+        DECIMAL profit "Biến động điểm (+/-)"
+        VARCHAR hand_type "SAP / LIENG / BO_DOI / DIEM"
+        INT score "Điểm (0..9 nếu là DIEM)"
+    }
 
-## 2. Khởi tạo database
+    play_cards {
+        VARCHAR round_id PK,FK "Mã ván bài"
+        BIGINT user_id PK,FK "Mã người chơi"
+        INT position_no PK "Vị trí lá (1, 2, 3)"
+        VARCHAR rank_name "Rank (TWO..ACE)"
+        VARCHAR suit_name "Suit (SPADE..DIAMOND)"
+    }
 
-Mở MySQL bằng tài khoản quản trị, từ thư mục gốc dự án. Tạo database và tài khoản ứng dụng; thay mật khẩu mẫu bằng mật khẩu trên máy của mình:
+    play_bets {
+        VARCHAR round_id PK,FK "Mã ván bài"
+        INT sequence_no PK "Thứ tự hành động (1..N)"
+        BIGINT user_id FK "Người thực hiện"
+        VARCHAR action "CALL / RAISE / ALL_IN / FOLD"
+        DECIMAL total_bet "Mức cược lũy kế"
+        DECIMAL added_amount "Điểm góp thêm trong lượt"
+        BIGINT created_at "Epoch milliseconds"
+    }
 
-```sql
-CREATE DATABASE IF NOT EXISTS bacay_online
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
+    play_pots {
+        VARCHAR round_id PK,FK "Mã ván bài"
+        INT pot_no PK "Số thứ tự pot (0: Main Pot, 1..N: Side Pots)"
+        DECIMAL amount "Giá trị điểm trong pot"
+    }
 
-CREATE USER 'bacay_app'@'localhost'
-    IDENTIFIED BY 'replace_locally';
+    play_pot_players {
+        VARCHAR round_id PK,FK "Mã ván bài"
+        INT pot_no PK,FK "Pot tương ứng"
+        BIGINT user_id PK,FK "Người chơi có quyền tranh pot"
+    }
 
-GRANT SELECT, INSERT, UPDATE
-    ON bacay_online.*
-    TO 'bacay_app'@'localhost';
+    play_ledger {
+        VARCHAR round_id PK,FK "Mã ván bài"
+        BIGINT user_id PK,FK "Mã người chơi"
+        DECIMAL delta "Biến động điểm"
+        DECIMAL balance_before "Số dư trước ván"
+        DECIMAL balance_after "Số dư sau ván"
+    }
 
-USE bacay_online;
-
-SOURCE server/src/main/resources/schema.sql;
+    admin_adjustments {
+        BIGINT id PK "Auto Increment"
+        BIGINT user_id FK "Mã người chơi"
+        DECIMAL delta "Biến động (+/-)"
+        DECIMAL balance_before "Số dư trước chỉnh"
+        DECIMAL balance_after "Số dư sau chỉnh"
+        VARCHAR reason "Lý do kiểm toán"
+        BIGINT created_by FK "Admin thực hiện"
+        TIMESTAMP created_at "Thời điểm tạo"
+    }
 ```
 
-Lệnh `SOURCE` được chạy trong MySQL client, không phải PowerShell. Đường dẫn trên tính từ thư mục gốc dự án.
-
-Nếu tài khoản `bacay_app` đã tồn tại, sử dụng tài khoản đó hoặc điều chỉnh tài khoản/mật khẩu phù hợp trước khi chạy ứng dụng.
-
-Script dùng `CREATE TABLE IF NOT EXISTS` và không xóa dữ liệu hiện có. Tuy nhiên, lệnh này không cập nhật cấu trúc bảng cũ. Database đã tạo bằng schema trước đó cần được đối chiếu và migration riêng.
-
-Không commit mật khẩu thật hoặc dữ liệu cấu hình cá nhân vào repository.
-
-## 3. Cấu hình kết nối
-
-Chương trình lấy cấu hình từ biến môi trường:
-
-| Biến | Ý nghĩa |
-|---|---|
-| `BACAY_DB_URL` | URL JDBC kết nối MySQL |
-| `BACAY_DB_USER` | Tài khoản database |
-| `BACAY_DB_PASSWORD` | Mật khẩu database |
-
-Nếu không đặt `BACAY_DB_URL`, chương trình dùng:
-
-```text
-jdbc:mysql://localhost:3306/bacay_online?connectTimeout=5000&socketTimeout=10000&connectionTimeZone=UTC
-```
-
-Cần đặt `BACAY_DB_USER` và `BACAY_DB_PASSWORD` trước khi chạy server.
-
-`server/src/main/resources/database.env.example` là cấu hình mẫu. Java không tự đọc file `.env`; cần đặt các biến trong môi trường của tiến trình chạy server.
-
-Ví dụ PowerShell:
-
-```powershell
-$env:BACAY_DB_USER = 'bacay_app'
-$env:BACAY_DB_PASSWORD = '<mat-khau-local>'
-$env:BACAY_DB_URL = 'jdbc:mysql://localhost:3306/bacay_online?connectTimeout=5000&socketTimeout=10000&connectionTimeZone=UTC'
-```
-
-Các biến trên chỉ áp dụng cho terminal hiện tại và các tiến trình khởi chạy từ terminal đó. Nếu thay đổi cấu hình, cần khởi động lại server.
-
-Khi thiếu cấu hình tài khoản database, server vẫn có thể chạy phần kết nối M1; chức năng tài khoản M2 chưa sử dụng được.
-
-## 4. Build và chạy
-
-Chạy các lệnh sau từ thư mục gốc dự án bằng PowerShell và JDK 21:
-
-```powershell
-.\server\mvnw.cmd -f .\pom.xml clean install
-
-.\server\mvnw.cmd -f .\server\pom.xml dependency:copy-dependencies
-
-java -cp 'server\target\classes;shared\target\classes;server\target\dependency\*' com.game3cay.server.ServerApplication
-```
-
-`clean install` build các module, chạy các test đã khai báo và cài artifact vào Maven repository cục bộ.
-
-`dependency:copy-dependencies` chuẩn bị các dependency của server, bao gồm JDBC driver.
-
-Server mặc định nghe cổng `8888`.
-
-Mở terminal khác để chạy client:
-
-```powershell
-java -cp 'client\target\classes;shared\target\classes' com.game3cay.RunClient
-```
-
-Trên macOS/Linux, đặt biến môi trường bằng `export`. Nếu có Maven trong PATH:
-
-```bash
-export BACAY_DB_USER='bacay_app'
-export BACAY_DB_PASSWORD='<mat-khau-local>'
-export BACAY_DB_URL='jdbc:mysql://localhost:3306/bacay_online?connectTimeout=5000&socketTimeout=10000&connectionTimeZone=UTC'
-
-mvn -f pom.xml clean install
-
-mvn -f server/pom.xml dependency:copy-dependencies
-
-java -cp 'server/target/classes:shared/target/classes:server/target/dependency/*' com.game3cay.server.ServerApplication
-```
-
-Classpath trên macOS/Linux dùng dấu `:`; trên Windows dùng dấu `;`.
-
-## 5. Luồng tài khoản đã tích hợp
-
-`ServerApplication` tạo một BUS dùng chung thông qua:
-
-```java
-UserBUS users = JdbcUserBUS.fromEnvironment();
-```
-
-BUS được truyền vào các `ClientHandler`.
-
-### Đăng ký
-
-1. Client gửi `REGISTER` với `RegisterRequest`.
-2. Handler gọi `UserBUS.register()`.
-3. BUS kiểm tra dữ liệu, hash mật khẩu và gọi DAO thêm tài khoản.
-4. Handler chuyển `UserDTO` thành `AuthResult`, trả `AUTH_RESULT` giữ nguyên requestId.
-
-Đăng ký thành công không tạo phiên đăng nhập. Người dùng cần thực hiện `LOGIN`.
-
-### Đăng nhập
-
-1. Client gửi `LOGIN` với `AuthRequest`.
-2. Handler gọi `UserBUS.authenticate()`.
-3. BUS đọc tài khoản, xác minh mật khẩu và kiểm tra trạng thái.
-4. Handler đăng ký phiên trong `SessionRegistry`.
-5. Khi đăng ký phiên thành công, handler gắn danh tính vào kết nối rồi trả `AUTH_RESULT`.
-
-Nếu tài khoản đã có phiên hoạt động, server trả `ALREADY_LOGGED_IN` và giữ phiên cũ.
-
-Danh tính cho các thao tác sau đăng nhập được lấy từ phiên server.
-
-### Đăng xuất và mất kết nối
-
-`LOGOUT` dọn trạng thái phòng, giải phóng phiên và trả `ACK`. Socket được giữ mở để người dùng có thể đăng nhập lại.
-
-Khi mất kết nối hoặc heartbeat timeout, server dọn phòng và giải phóng phiên. Nếu người rời là chủ phòng, `RoomManager` chuyển quyền cho người còn lại vào phòng sớm nhất; phòng trống bị xóa.
-
-### Xử lý lỗi
-
-Khi gặp `BUSException`, handler lấy `getErrorCode()` và trả `ERROR` cùng thông báo nghiệp vụ.
-
-Không gửi exception, SQL cause hoặc password hash cho client.
-
-`UserDTO` chỉ dùng nội bộ server. Dữ liệu tài khoản qua socket sử dụng `AuthResult` của module shared.
-
-## 6. Quy tắc dữ liệu tài khoản
-
-| Trường | Quy tắc |
-|---|---|
-| Username | 3–50 ký tự ASCII gồm chữ, số hoặc gạch dưới; bỏ khoảng trắng đầu/cuối và lưu lowercase |
-| Mật khẩu đăng ký | 8–128 ký tự, không được chỉ chứa khoảng trắng; không trim |
-| Tên hiển thị | Tối đa 100 ký tự; rỗng thì dùng username |
-| Email | Tùy chọn, tối đa 100 ký tự; nếu có phải đúng định dạng được BUS kiểm tra |
-| Trạng thái | `ACTIVE` hoặc `BLOCKED` |
-| Balance | Khởi tạo bằng 0 để giữ tương thích với DTO |
-
-Đăng nhập không phân biệt hoa/thường đối với username.
-
-Theo `schema.sql` hiện tại, username và email đều có ràng buộc UNIQUE. Email không được cung cấp được lưu bằng `NULL`.
-
-Khi trùng username, BUS trả `USERNAME_EXISTS`. Khi trùng email, BUS trả `INVALID_REQUEST` với thông báo “Email đã được sử dụng”.
-
-Mật khẩu được hash bằng `PasswordUtil`, sử dụng PBKDF2WithHmacSHA256 và salt ngẫu nhiên. Không lưu mật khẩu thô hoặc đưa hash vào `UserDTO`.
-
-DAO sử dụng `PreparedStatement`. Mỗi truy vấn mở và đóng connection riêng; bản hiện tại chưa dùng connection pool.
-
-Ràng buộc UNIQUE trong database bảo vệ trường hợp hai yêu cầu đăng ký cùng username đến đồng thời.
-
-## 7. Mã lỗi
-
-| Mã lỗi | Trường hợp |
-|---|---|
-| `INVALID_REQUEST` | Dữ liệu đăng ký không hợp lệ hoặc email đã được sử dụng |
-| `USERNAME_EXISTS` | Username đã tồn tại |
-| `INVALID_CREDENTIALS` | Username hoặc mật khẩu đăng nhập không đúng |
-| `USER_BLOCKED` | Mật khẩu đúng nhưng tài khoản bị khóa |
-| `ALREADY_LOGGED_IN` | Tài khoản đang có phiên khác hoặc kết nối hiện tại đã đăng nhập |
-| `UNAUTHENTICATED` | Thao tác cần đăng nhập nhưng kết nối chưa có danh tính |
-| `INTERNAL_ERROR` | Lỗi truy cập database hoặc lỗi nội bộ được xử lý |
-| `NOT_IMPLEMENTED` | Gọi chức năng chưa triển khai trong bản M2 |
-
-`ALREADY_LOGGED_IN` và `UNAUTHENTICATED` được xử lý ở tầng phiên/handler, không do database thay thế.
-
-Các hàm chưa triển khai:
-
-```java
-updateProfile(...)
-changePassword(...)
-updateBalance(...)
-```
-
-Các hàm này trả `NOT_IMPLEMENTED`, không trả thành công giả.
-
-## 8. Kiểm thử và nghiệm thu
-
-### Kiểm thử tự động
-
-Chạy từ thư mục gốc bằng JDK 21:
-
-```powershell
-.\server\mvnw.cmd -f .\pom.xml clean verify
-```
-
-`JdbcUserBUSTest` dùng H2 ở chế độ MySQL để kiểm tra:
-
-- Đăng ký, hash mật khẩu và đăng nhập đúng/sai.
-- Username trùng.
-- Tài khoản bị khóa.
-- Validation và các hàm chưa triển khai.
-- Hai yêu cầu đăng ký cùng username đồng thời.
-- Lỗi mở connection.
-
-H2 không thay thế nghiệm thu với MySQL thật hoặc kiểm tra luồng Swing–TCP–BUS–database.
-
-### Nghiệm thu MySQL thật
-
-Sử dụng tài khoản thử, ví dụ username `nhat_demo`, mật khẩu `DemoPass123`, tên hiển thị `Nhật`.
-
-| Thao tác | Kết quả mong đợi |
-|---|---|
-| Đăng ký username mới | Tạo tài khoản và trả `AUTH_RESULT`; chưa đăng nhập |
-| Đăng nhập đúng mật khẩu | Thành công, có phiên online |
-| Đăng nhập sai mật khẩu | `INVALID_CREDENTIALS` |
-| Đăng ký lại bằng `NHAT_DEMO` | `USERNAME_EXISTS` |
-| Đăng ký username khác với email đã sử dụng | `INVALID_REQUEST` |
-| Client thứ hai đăng nhập cùng tài khoản đang online | `ALREADY_LOGGED_IN` |
-| Đăng xuất rồi đăng nhập lại | Thành công trên socket đang mở |
-| Ngắt kết nối rồi kết nối và đăng nhập lại | Phiên cũ được giải phóng |
-| Database không truy cập được | `INTERNAL_ERROR` |
-
-Để thử tài khoản bị khóa, thực hiện bằng tài khoản database có quyền cập nhật:
-
-```sql
-UPDATE users
-SET status = 'BLOCKED'
-WHERE username = 'nhat_demo';
-```
-
-Đăng nhập bằng mật khẩu đúng phải nhận `USER_BLOCKED`.
-
-Sau khi kiểm tra, khôi phục trạng thái:
-
-```sql
-UPDATE users
-SET status = 'ACTIVE'
-WHERE username = 'nhat_demo';
-```
-
-Có thể thử lỗi database bằng URL trỏ đến cổng không có MySQL, sau đó khởi động lại server và gửi yêu cầu tài khoản. Kết quả cần là `INTERNAL_ERROR`, không lộ SQL cause cho client.
-
-Sử dụng tài khoản thử riêng. Khi lặp bài đăng ký, dùng username mới để tránh nhầm lỗi trùng tài khoản với lỗi kết nối.
-
-## 9. Phạm vi database hiện tại
-
-Đối chiếu thiết kế database, `BIGSERIAL` được chuyển thành `BIGINT AUTO_INCREMENT`. Bảng `users` có các trường thống kê tương ứng với `UserDTO`.
-
-`schema.sql` hiện có các bảng:
-
-- `users`
-- `rooms`
-- `room_players`
-- `games`
-- `game_players`
-- `cards`
-- `game_cards`
-- `point_bets`
-- `transactions`
-
-Luồng runtime M1–M3 mới truy cập bảng `users` cho nghiệp vụ tài khoản. Phòng và chat được giữ trong RAM.
-
-Việc có bảng trong schema chưa đồng nghĩa đã triển khai nghiệp vụ lưu trữ. Lưu kết quả, lịch sử, giao dịch và cập nhật thống kê cần được tích hợp ở M4–M5.
-
-Luồng hiện tại sử dụng JDBC, chưa sử dụng JPA.
+---
+
+## 2. Chi Tiết Các Bảng & Ràng Buộc
+
+### 2.1. Bảng `users` (Tài khoản & Số dư)
+Lưu trữ định danh người chơi, mật khẩu bảo mật và điểm số giải trí:
+- `id`: Khóa chính tự tăng (`BIGINT NOT NULL AUTO_INCREMENT`).
+- `username`: Tên đăng nhập duy nhất (`VARCHAR(50) NOT NULL UNIQUE`).
+- `password_hash`: Chuỗi mã hóa dạng `pbkdf2:sha256:600000:<salt_b64>:<hash_b64>`.
+- `role`: Vai trò tài khoản (`VARCHAR(20) NOT NULL DEFAULT 'USER'`).
+  - *Ràng buộc:* `CONSTRAINT ck_users_role CHECK (role IN ('USER', 'ADMIN'))`.
+- `balance`: Điểm số khả dụng (`DECIMAL(15,2) NOT NULL DEFAULT 1000.00`).
+  - *Ràng buộc:* `CONSTRAINT ck_users_balance CHECK (balance >= 0)`.
+- `status`: Trạng thái hoạt động (`ACTIVE` hoặc `BLOCKED`).
+- Thống kê: `total_games`, `total_wins`, `total_losses` (ràng buộc `>= 0`).
+
+### 2.2. Bảng `play_rounds` (Phiên Ván Bài)
+Lưu trữ thông tin tổng quát của từng ván bài đã kết thúc hoặc bị hủy:
+- `round_id`: Định danh duy nhất toàn hệ thống dạng UUID v4 (`VARCHAR(64) NOT NULL UNIQUE`).
+- `ante`: Mức cược sàn cơ bản của bàn tại thời điểm chia bài.
+- `status`: Trạng thái kết thúc:
+  - `FINISHED`: Ván bài hoàn tất và có thanh toán.
+  - `CANCELLED`: Ván bài bị hủy (ví dụ không còn đủ người chơi) và hoàn điểm đầy đủ cho các bên.
+- `ended_at`: Thời điểm kết thúc tính theo Epoch Milliseconds (`BIGINT`).
+
+### 2.3. Bảng `play_results` (Kết Quả Ván Bài Của Từng Người)
+- Khóa chính kết hợp: `(round_id, user_id)`.
+- `outcome`: Kết quả (`WIN`, `LOSE`, `DRAW`, `FOLD`, `CANCELLED`).
+- `profit`: Số điểm nhận được hoặc mất đi (`DECIMAL(15,2)`). Có thể là số âm hoặc dương.
+- `hand_type` & `score`: Phân loại bài (`SAP`, `LIENG`, `BO_DOI`, `DIEM`) và điểm số (0–9).
+- Chỉ mục: `INDEX ix_play_history (user_id, round_id)` giúp truy vấn phân trang lịch sử cá nhân đạt hiệu năng tối đa.
+
+### 2.4. Bảng `play_cards` (Chi Tiết Từng Lá Bài)
+- Lưu trữ chính xác 3 lá bài được chia cho từng người chơi.
+- Khóa chính kết hợp: `(round_id, user_id, position_no)` với `position_no IN (1, 2, 3)`.
+- Ràng buộc bài không trùng: `UNIQUE (round_id, rank_name, suit_name)` đảm bảo tính trung thực tuyệt đối trong một ván không bao giờ xuất hiện hai lá bài giống nhau từ bộ 52 lá.
+
+### 2.5. Bảng `play_bets` (Nhật Ký Đặt Cược)
+- Ghi nhận chi tiết từng thao tác đặt cược theo dòng thời gian.
+- Khóa chính: `(round_id, sequence_no)`.
+- `action`: Hành động (`CALL`, `RAISE`, `ALL_IN`, `FOLD`).
+- `added_amount`: Số điểm người chơi phải bỏ thêm từ tài khoản trong lượt này.
+
+### 2.6. Bảng `play_pots` & `play_pot_players` (Cấu Trúc Pot Phụ)
+- Khi có người chơi **Tất tay (All-in)** với số dư nhỏ hơn mức cược cao nhất của bàn, hệ thống tự động phân tách thành **Pot chính (pot_no = 0)** và các **Pot phụ (pot_no >= 1)**.
+- `play_pot_players` xác định danh sách các ứng viên hợp lệ đủ điều kiện tranh phần thưởng của pot tương ứng.
+
+### 2.7. Bảng `play_ledger` (Sổ Cái Kép Kiểm Toán Điểm Số)
+Lưu vết kiểm toán cho mọi biến động số dư tài khoản do chơi bài:
+- Ràng buộc tính toán bất biến:
+  - `CHECK (balance_after >= 0)`
+  - `CHECK (balance_after = balance_before + delta)`
+
+### 2.8. Bảng `admin_adjustments` (Sổ Cái Can Thiệp Của Quản Trị Viên)
+Ghi nhận đầy đủ vết kiểm toán mọi hành động cộng/trừ điểm thủ công của Admin:
+- `id`: Khóa chính tự tăng (`BIGINT NOT NULL AUTO_INCREMENT`).
+- `user_id`: Khóa ngoại tham chiếu đến `users(id)` của người chơi được điều chỉnh.
+- `delta`: Mức thay đổi điểm số (dương nếu cộng điểm, âm nếu trừ điểm).
+- `balance_before` & `balance_after`: Số dư trước và sau can thiệp (`balance_after = balance_before + delta`).
+- `reason`: Lý do bắt buộc khi Admin thực hiện thao tác (tối đa 255 ký tự).
+- `created_by`: ID tài khoản Admin thực hiện thao tác.
+- `created_at`: Thời điểm ghi nhận (`TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).
+
+---
+
+## 3. Quản Lý Đồng Thời & Mức Cô Lập (Transaction Isolation)
+
+1. **Mức cô lập**: Mặc định sử dụng **READ COMMITTED** hoặc **REPEATABLE READ** của InnoDB.
+2. **Chiến lược khóa phòng tránh Deadlock**:
+   - Khi hoàn tất ván, server mở một giao dịch duy nhất (`START TRANSACTION`).
+   - Danh sách các tài khoản người chơi trong ván bài được sắp xếp tăng dần theo ID (`ORDER BY user_id ASC`).
+   - Thực thi khóa đọc ghi bằng cú pháp:
+     ```sql
+     SELECT balance FROM users WHERE id = ? FOR UPDATE;
+     ```
+   - Việc sắp xếp cố định thứ tự khóa đảm bảo không bao giờ xảy ra tình trạng chu trình chờ lẫn nhau giữa các giao dịch đồng thời.
+
+---
+
+## 4. Hướng Dẫn Cài Đặt & Nâng Cấp Schema
+
+Toàn bộ cấu trúc bảng và thủ tục khởi tạo được đóng gói trong một file SQL duy nhất:
+👉 [`database/setup.sql`](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/database/setup.sql)
+
+### Các đặc điểm an toàn:
+- Tính chất **Idempotent** (chạy lại nhiều lần không sinh lỗi nhờ `CREATE TABLE IF NOT EXISTS`).
+- Giữ nguyên toàn bộ tài khoản và lịch sử hiện có trong cơ sở dữ liệu `bacay_online`.
+- Tự động di chuyển dữ liệu (Migration) bổ sung cột `role` và bảng `admin_adjustments` thông qua Stored Procedure an toàn `bacay_migration_add_role`.
+- Tự động gieo tài khoản Admin quản trị mặc định:
+  - **Tên đăng nhập:** `admin`
+  - **Mật khẩu:** `admin@123` (băm PBKDF2WithHmacSHA256, 600.000 vòng lặp)
+  - **Vai trò:** `ADMIN`
+- Tự động cấp 1.000 điểm khởi tạo cho các tài khoản cũ có số dư 0 điểm thông qua cơ chế bảng migration `app_migrations`.

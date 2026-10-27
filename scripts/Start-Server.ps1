@@ -1,13 +1,22 @@
 param(
     [int]$Port = 8888,
     [string]$DbUser = 'root',
+    [string]$DbPassword = $null,
     [string]$DbUrl = 'jdbc:mysql://localhost:3306/bacay_online?connectTimeout=5000&socketTimeout=10000&connectionTimeZone=UTC&allowPublicKeyRetrieval=true'
 )
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
 Set-Location $PSScriptRoot
 $env:BACAY_DB_USER = $DbUser
 $env:BACAY_DB_URL = $DbUrl
-if ($null -eq $env:BACAY_DB_PASSWORD) {
+if ($DbPassword) {
+    $env:BACAY_DB_PASSWORD = $DbPassword
+}
+if ($null -eq $env:BACAY_DB_PASSWORD -or $env:BACAY_DB_PASSWORD -eq '') {
+    $env:BACAY_DB_PASSWORD = [System.Environment]::GetEnvironmentVariable('BACAY_DB_PASSWORD', 'User')
+}
+if ($null -eq $env:BACAY_DB_PASSWORD -or $env:BACAY_DB_PASSWORD -eq '') {
     $secure = Read-Host 'Mat khau MySQL (co the de trong)' -AsSecureString
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try { $env:BACAY_DB_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }

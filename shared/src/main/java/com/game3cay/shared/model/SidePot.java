@@ -6,17 +6,15 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Side pot khi có nhiều người ALL_IN ở các mức khác nhau.
- * Được tính bởi {@code SidePotCalculator} ở server — gửi trong {@code BetStateSnapshot}
- * và {@code RoundResult}.
+ * Một pot phụ (side pot) sinh ra khi có người chơi chọn ALL_IN với mức điểm thấp hơn người khác.
+ *
+ * @param amount            tổng số điểm trong pot này
+ * @param eligiblePlayerIds danh sách ID người chơi có quyền tranh pot này (đã góp đủ)
  */
 public record SidePot(
-        /** Tổng điểm trong pot này. */
         BigDecimal amount,
-        /** Danh sách userId được phép tranh pot này (đã góp đủ). */
         List<Long> eligiblePlayerIds
 ) implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 }

@@ -12,10 +12,11 @@ try {
     New-Item -ItemType Directory -Force $dist, (Join-Path $dist 'lib'), (Join-Path $dist 'database') | Out-Null
     Copy-Item .\server\target\server-1.0-SNAPSHOT.jar (Join-Path $dist 'server.jar') -Force
     Copy-Item .\client\target\client-1.0-SNAPSHOT.jar (Join-Path $dist 'client.jar') -Force
+    Copy-Item .\admin\target\admin-1.0-SNAPSHOT.jar (Join-Path $dist 'admin.jar') -Force
     Copy-Item .\shared\target\shared-1.0-SNAPSHOT.jar (Join-Path $dist 'shared.jar') -Force
     Copy-Item .\server\target\dependency\*.jar (Join-Path $dist 'lib') -Force
     Copy-Item .\database\setup.sql (Join-Path $dist 'database') -Force
-    Copy-Item .\scripts\Start-Server.ps1,.\scripts\Start-Client.cmd,.\scripts\Start-Server.cmd $dist -Force
+    Copy-Item .\scripts\Start-Server.ps1,.\scripts\Start-Client.cmd,.\scripts\Start-Server.cmd,.\scripts\Start-Admin.cmd $dist -Force
     Copy-Item .\README.md,.\Game_Rules.md $dist -Force
-    Write-Host 'BUILD OK. Mo Start-Server.cmd / Start-Client.cmd de choi.'
+    Write-Host 'BUILD OK. Mo Start-Server.cmd / Start-Client.cmd / Start-Admin.cmd de su dung.'
 } finally { Pop-Location }
