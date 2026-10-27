@@ -30,12 +30,7 @@ import java.awt.image.BufferedImage;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Hộp thoại tương tác "Nặn bài" (Card Squeeze Mode) cho phép người chơi
- * kéo vuốt lá bài thứ 3 để hé mở điểm số từng chút một.
- */
 public final class CardSqueezeDialog extends JDialog {
-
     private final List<Card> cards;
     private final Runnable onFinished;
     private final SqueezeCanvas canvas;
@@ -54,7 +49,7 @@ public final class CardSqueezeDialog extends JDialog {
             protected void paintComponent(Graphics g) {
                 var g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                // Glass-morphism navy gradient
+
                 g2.setPaint(new GradientPaint(0, 0, new Color(14, 28, 50, 250), 0, getHeight(), new Color(8, 16, 30, 252)));
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 24, 24);
                 g2.setColor(Theme.GOLD);
@@ -66,7 +61,6 @@ public final class CardSqueezeDialog extends JDialog {
         root.setOpaque(false);
         root.setBorder(BorderFactory.createEmptyBorder(16, 20, 16, 20));
 
-        // Header
         var header = Theme.transparent(new BorderLayout());
         var title = Theme.label("🖐 NẶN BÀI BA CÂY", 18, Theme.GOLD);
         title.setFont(Theme.font(18, true));
@@ -90,11 +84,9 @@ public final class CardSqueezeDialog extends JDialog {
         header.add(closeX, BorderLayout.EAST);
         root.add(header, BorderLayout.NORTH);
 
-        // Center: Interactive Squeeze Area
         canvas = new SqueezeCanvas();
         root.add(canvas, BorderLayout.CENTER);
 
-        // Footer buttons
         var footer = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 14, 0));
         var btnReveal = new Theme.Button("👁 Mở Hết Bài", "gold");
         btnReveal.setPreferredSize(new Dimension(140, 38));
@@ -210,33 +202,26 @@ public final class CardSqueezeDialog extends JDialog {
 
             int y = C3_Y;
 
-            // Lá 1 (Mở sẵn)
             drawCard(g2, cards.get(0), 40, y);
-            // Lá 2 (Mở sẵn)
+
             drawCard(g2, cards.get(1), 195, y);
 
-            // Lá 3 (Nặn bài)
-            // Lớp dưới: Lá bài thật
             drawCard(g2, cards.get(2), C3_X, y);
 
-            // Lớp trên: Mặt sau lá bài (bị kéo lệch)
             if (!isRevealed) {
                 int backX = C3_X + dragX;
                 int backY = y + dragY;
 
-                // Bóng đổ dưới lá bài bị kéo
                 g2.setColor(new Color(0, 0, 0, 120));
                 g2.fillRoundRect(backX + 6, backY + 6, CARD_W, CARD_H, 12, 12);
 
                 BufferedImage backImg = Assets.get("cards/back.png", 200);
                 g2.drawImage(backImg, backX, backY, CARD_W, CARD_H, null);
 
-                // Viền sáng vàng khi đang kéo
                 g2.setColor(dragging ? Theme.GOLD : new Color(212, 175, 55, 120));
                 g2.setStroke(new BasicStroke(dragging ? 2.5f : 1.5f));
                 g2.drawRoundRect(backX, backY, CARD_W, CARD_H, 12, 12);
 
-                // Nhãn hướng dẫn dưới lá 3
                 g2.setFont(Theme.font(11, false));
                 g2.setColor(Theme.GOLD);
                 String hint = dragging ? "Kéo tiếp để mở hết!" : "↕ Kéo lá bài để hé mở";
@@ -244,7 +229,6 @@ public final class CardSqueezeDialog extends JDialog {
                 g2.drawString(hint, C3_X + (CARD_W - hintW) / 2, y + CARD_H + 20);
             }
 
-            // Khi đã mở hết: Hiện huy hiệu điểm số rực rỡ!
             if (isRevealed) {
                 String scoreTitle = evaluateHandTitle(cards);
                 g2.setColor(new Color(10, 22, 42, 220));
@@ -279,28 +263,24 @@ public final class CardSqueezeDialog extends JDialog {
         Card c2 = cards.get(1);
         Card c3 = cards.get(2);
 
-        // 1. Sáp (3 lá cùng rank)
         if (c1.rank() == c2.rank() && c2.rank() == c3.rank()) {
             return "★ SÁP " + c1.rank().displayName() + " ★";
         }
 
-        // 2. Bồ Đội (J, Q, K)
         if (c1.rank().isFaceCard() && c2.rank().isFaceCard() && c3.rank().isFaceCard()) {
             return "★ BỒ ĐỘI (3 TÂY) ★";
         }
 
-        // 3. Liêng (3 lá liên tiếp)
         int[] sorted = {c1.rank().rankValue(), c2.rank().rankValue(), c3.rank().rankValue()};
         Arrays.sort(sorted);
         if (sorted[0] + 1 == sorted[1] && sorted[1] + 1 == sorted[2]) {
             return "★ LIÊNG " + c1.rank().displayName() + "-" + c2.rank().displayName() + "-" + c3.rank().displayName() + " ★";
         }
-        // Liêng A-2-3 (2, 3, 14)
+
         if (sorted[0] == 2 && sorted[1] == 3 && sorted[2] == 14) {
             return "★ LIÊNG A-2-3 ★";
         }
 
-        // 4. Điểm
         int sum = c1.pointValue() + c2.pointValue() + c3.pointValue();
         int score = sum % 10;
         if (score == 0) {

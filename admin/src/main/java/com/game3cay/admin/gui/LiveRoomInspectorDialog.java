@@ -34,12 +34,7 @@ import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
-/**
- * Cửa sổ soi bài trực tiếp (God-View Inspector) dành cho Quản trị viên:
- * Xem toàn bộ bài tẩy chưa lật của tất cả người chơi trong bàn, mức cược, quỹ pot và chat room.
- */
 public final class LiveRoomInspectorDialog extends JDialog {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -49,7 +44,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
     private final Consumer<Long> onRefreshRequest;
     private final Consumer<Long> onResetRequest;
 
-    // Header labels
     private final JLabel titleLabel = AdminTheme.label("BÀN #—", 18, AdminTheme.GOLD, true);
     private final JLabel statusBadge = AdminTheme.label("WAITING", 12, AdminTheme.MUTED, true);
     private final JLabel anteBadge = AdminTheme.label("Cược sàn: 0", 12, AdminTheme.TEXT);
@@ -57,14 +51,12 @@ public final class LiveRoomInspectorDialog extends JDialog {
     private final JLabel turnBadge = AdminTheme.label("Lượt đi: —", 12, AdminTheme.TEXT);
     private final JLabel roundIdLabel = AdminTheme.label("Mã ván: —", 11, AdminTheme.MUTED);
 
-    // Controls
     private final JCheckBox autoRefreshCheck = new JCheckBox("Tự động làm mới (2s)", true);
     private final AdminTheme.Button refreshButton = new AdminTheme.Button("LÀM MỚI NGAY", "plain");
     private final AdminTheme.Button resetRoomButton = new AdminTheme.Button("GIẢI TÁN BÀN", "red");
     private final AdminTheme.Button closeButton = new AdminTheme.Button("ĐÓNG", "plain");
     private final JLabel lastUpdateLabel = AdminTheme.label("Chưa cập nhật", 11, AdminTheme.MUTED);
 
-    // Panels
     private final JPanel playersContainer = new JPanel();
     private final JTextArea chatLogArea = new JTextArea();
     private Timer autoTimer;
@@ -85,7 +77,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
         buildCenter();
         buildFooter();
 
-        // Auto refresh timer (2000 ms)
         autoTimer = new Timer(2000, e -> {
             if (autoRefreshCheck.isSelected() && onRefreshRequest != null) {
                 onRefreshRequest.accept(roomId);
@@ -109,7 +100,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
                 new EmptyBorder(14, 20, 14, 20)
         ));
 
-        // Top line: Title & Badges
         JPanel topInfo = AdminTheme.transparent(new BorderLayout());
         JPanel titleBox = AdminTheme.transparent(new FlowLayout(FlowLayout.LEFT, 12, 0));
         titleBox.add(titleLabel);
@@ -119,7 +109,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
         titleBox.add(turnBadge);
         topInfo.add(titleBox, BorderLayout.WEST);
 
-        // Control buttons
         JPanel actions = AdminTheme.transparent(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         autoRefreshCheck.setFont(AdminTheme.font(12, false));
         autoRefreshCheck.setForeground(AdminTheme.TEXT);
@@ -152,7 +141,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
         JPanel centerSplit = AdminTheme.transparent(new BorderLayout(14, 0));
         centerSplit.setBorder(new EmptyBorder(0, 20, 0, 20));
 
-        // Left / Center: Players card list
         playersContainer.setLayout(new BoxLayout(playersContainer, BoxLayout.Y_AXIS));
         playersContainer.setBackground(AdminTheme.BG);
 
@@ -162,7 +150,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
         playersScroll.getVerticalScrollBar().setUnitIncrement(16);
         centerSplit.add(playersScroll, BorderLayout.CENTER);
 
-        // Right: Room chat and events
         JPanel chatPanel = new JPanel(new BorderLayout(0, 8));
         chatPanel.setPreferredSize(new Dimension(340, 400));
         chatPanel.setBackground(AdminTheme.PANEL);
@@ -236,7 +223,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
 
         lastUpdateLabel.setText("Cập nhật lúc " + LocalTime.now().format(TIME_FORMATTER));
 
-        // Update players list
         playersContainer.removeAll();
         List<AdminLivePlayerHand> players = detail.players();
         if (players == null || players.isEmpty()) {
@@ -252,7 +238,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
         playersContainer.revalidate();
         playersContainer.repaint();
 
-        // Update chat log
         StringBuilder sb = new StringBuilder();
         if (detail.recentChats() != null) {
             for (ChatMessage m : detail.recentChats()) {
@@ -283,7 +268,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
                 new EmptyBorder(10, 14, 10, 14)
         ));
 
-        // Left info
         JPanel left = AdminTheme.transparent(new GridLayout(0, 1, 0, 3));
         String title = "Ghế #" + p.seat() + " · " + p.displayName() + " (" + p.username() + ")";
         JLabel nameLabel = AdminTheme.label(title, 13, isTurn ? AdminTheme.GOLD : AdminTheme.TEXT, true);
@@ -304,7 +288,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
         left.add(statusLbl);
         box.add(left, BorderLayout.WEST);
 
-        // Center / Right: Cards and Hand evaluation (GOD-VIEW)
         JPanel cardsArea = AdminTheme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 4));
 
         List<Card> cards = p.cards();
@@ -318,7 +301,6 @@ public final class LiveRoomInspectorDialog extends JDialog {
             cardsArea.add(AdminTheme.label("[ CHỜ CHIA BÀI ]", 12, AdminTheme.MUTED));
         }
 
-        // Hand evaluation badge
         if (p.evaluation() != null && !p.evaluation().isBlank()) {
             JPanel evalBadge = new JPanel(new BorderLayout());
             evalBadge.setBackground(new Color(15, 32, 54));

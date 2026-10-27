@@ -29,21 +29,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Điểm khởi chạy chính (Main Entry Point) của máy chủ game Ba Cây Online.
- * <p>
- * Khởi tạo toàn bộ các thành phần:
- * <ul>
- *   <li>Kết nối MySQL (DAL/BUS) và kiểm tra schema CSDL.</li>
- *   <li>Hàng đợi ghi đĩa độ bền cao {@link ResultPersistence}.</li>
- *   <li>Bảng phiên kết nối {@link SessionRegistry} và quản lý bàn chơi {@link RoomManager}.</li>
- *   <li>Luồng định kỳ tick kiểm tra timeout lượt chơi và chuyển trạng thái bàn.</li>
- *   <li>Server socket TCP tiếp nhận kết nối người chơi.</li>
- *   <li>Shutdown hook đảm bảo đóng sạch socket, luồng và các tệp tin khi dừng server.</li>
- * </ul>
- */
 public final class ServerApplication {
-
     public static void main(String[] args) throws Exception {
         System.setOut(new java.io.PrintStream(System.out, true, java.nio.charset.StandardCharsets.UTF_8));
         System.setErr(new java.io.PrintStream(System.err, true, java.nio.charset.StandardCharsets.UTF_8));
@@ -62,7 +48,6 @@ public final class ServerApplication {
         JdbcUserBUS userBus = new JdbcUserBUS(connections);
         JdbcGameBUS gameBus = new JdbcGameBUS(connections);
 
-        // Kiểm tra sớm schema CSDL: dừng chương trình ngay nếu chưa chạy file SQL setup
         gameBus.checkSchema();
 
         Path dataDir = Path.of(System.getenv().getOrDefault("BACAY_DATA_DIR", "data/pending-results"));
@@ -116,7 +101,6 @@ public final class ServerApplication {
             try {
                 serverSocket.close();
             } catch (Exception ignored) {
-                // Bỏ qua lỗi đóng socket khi đang shutdown
             }
 
             activeHandlers.forEach(ClientHandler::close);

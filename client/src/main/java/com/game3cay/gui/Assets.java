@@ -15,25 +15,11 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Tiện ích tải và quản lý bộ nhớ đệm (cache) hình ảnh cho giao diện người dùng.
- * <p>
- * Áp dụng kỹ thuật subsampling đọc ảnh trực tiếp ở kích thước hiển thị mục tiêu,
- * giúp tiết kiệm bộ nhớ RAM đáng kể thay vì giữ toàn bộ 52 lá bài kích thước đầy đủ trong bộ nhớ.
- */
 public final class Assets {
-
     private static final Map<String, BufferedImage> IMAGE_CACHE = new ConcurrentHashMap<>();
 
     private Assets() {}
 
-    /**
-     * Lấy hình ảnh từ tài nguyên ứng dụng theo kích thước hiển thị mong muốn.
-     *
-     * @param relativePath đường dẫn tệp trong thư mục /assets/
-     * @param targetWidth  chiều rộng hiển thị mong muốn
-     * @return BufferedImage đã được tối ưu độ phân giải
-     */
     public static BufferedImage get(String relativePath, int targetWidth) {
         return IMAGE_CACHE.computeIfAbsent(relativePath + ":" + targetWidth, key -> loadImage(relativePath, targetWidth));
     }
@@ -68,12 +54,6 @@ public final class Assets {
         }
     }
 
-    /**
-     * Lấy hình ảnh đại diện cho một lá bài cụ thể.
-     *
-     * @param card lá bài cần lấy ảnh
-     * @return BufferedImage của lá bài
-     */
     public static BufferedImage card(Card card) {
         String suitName = switch (card.suit()) {
             case CHUON -> "clubs";
@@ -93,14 +73,6 @@ public final class Assets {
         return get("cards/" + suitName + "/" + rankName + " of " + suitName + ".png", 240);
     }
 
-    /**
-     * Vẽ hình ảnh lấp đầy vùng hiển thị (cover mode) bảo toàn tỷ lệ khung hình.
-     *
-     * @param g     đối tượng Graphics2D
-     * @param image hình ảnh cần vẽ
-     * @param width chiều rộng vùng đích
-     * @param height chiều cao vùng đích
-     */
     public static void cover(Graphics2D g, BufferedImage image, int width, int height) {
         double scale = Math.max((double) width / image.getWidth(), (double) height / image.getHeight());
         int scaledWidth = (int) Math.ceil(image.getWidth() * scale);
@@ -110,11 +82,6 @@ public final class Assets {
         g.drawImage(image, offsetX, offsetY, scaledWidth, scaledHeight, null);
     }
 
-    /**
-     * Thiết lập các cờ khử răng cưa chất lượng cao (Anti-aliasing) cho Graphics2D.
-     *
-     * @param g đối tượng Graphics2D
-     */
     public static void quality(Graphics2D g) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);

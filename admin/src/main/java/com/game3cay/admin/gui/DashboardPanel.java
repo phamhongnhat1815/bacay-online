@@ -17,11 +17,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-/**
- * Tab Tổng Quan (Dashboard) hiển thị số liệu thời gian thực và công cụ phát thông báo hệ thống.
- */
 public final class DashboardPanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -47,7 +43,6 @@ public final class DashboardPanel extends JPanel {
         setBackground(AdminTheme.BG);
         setBorder(new EmptyBorder(24, 28, 24, 28));
 
-        // Top Row: Title + Refresh
         JPanel topBar = AdminTheme.transparent(new BorderLayout());
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         titlePanel.add(AdminTheme.label("TỔNG QUAN HỆ THỐNG", 20, AdminTheme.GOLD, true));
@@ -60,10 +55,8 @@ public final class DashboardPanel extends JPanel {
         topBar.add(refreshBar, BorderLayout.EAST);
         add(topBar, BorderLayout.NORTH);
 
-        // Center Area
         JPanel center = AdminTheme.transparent(new BorderLayout(0, 20));
 
-        // 5 KPI Cards Grid
         JPanel cardsGrid = AdminTheme.transparent(new GridLayout(1, 5, 14, 0));
         cardsGrid.add(AdminTheme.card("Trực Tuyến", onlineUsersLabel, "Người chơi online"));
         cardsGrid.add(AdminTheme.card("Bàn Hoạt Động", activeRoomsLabel, "Bàn đang có người / chơi"));
@@ -72,10 +65,8 @@ public final class DashboardPanel extends JPanel {
         cardsGrid.add(AdminTheme.card("Số Ván Hôm Nay", todayRoundsLabel, "Ván đã hoàn tất từ 0h"));
         center.add(cardsGrid, BorderLayout.NORTH);
 
-        // Content Area below cards
         JPanel contentArea = AdminTheme.transparent(new BorderLayout(0, 16));
 
-        // 1. Broadcast Card Panel
         JPanel broadcastCard = new JPanel(new BorderLayout(0, 14)) {
             @Serial
             private static final long serialVersionUID = 1L;
@@ -126,7 +117,6 @@ public final class DashboardPanel extends JPanel {
         broadcastCard.add(broadcastBody, BorderLayout.CENTER);
         contentArea.add(broadcastCard, BorderLayout.NORTH);
 
-        // 2. Server Architecture & Health Card
         JPanel infoCard = new JPanel(new BorderLayout(0, 14)) {
             @Serial
             private static final long serialVersionUID = 1L;
@@ -161,7 +151,6 @@ public final class DashboardPanel extends JPanel {
         center.add(contentArea, BorderLayout.CENTER);
         add(center, BorderLayout.CENTER);
 
-        // Actions
         refreshButton.addActionListener(e -> {
             if (onRefreshCallback != null) {
                 onRefreshCallback.run();

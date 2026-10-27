@@ -17,11 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-/**
- * Socket Client chuyên dụng cho ứng dụng quản trị Admin, kết nối qua kênh TCP Socket chuẩn Packet v2.
- */
 public final class AdminSocketClient {
-
     private final String host;
     private final int port;
     private final Consumer<Packet> pushListener;
@@ -82,7 +78,6 @@ public final class AdminSocketClient {
             close();
         }
 
-        // Tự động timeout sau 10 giây nếu server không trả lời
         return future.orTimeout(10, TimeUnit.SECONDS).whenComplete((res, err) -> {
             pendingRequests.remove(requestId);
         });
@@ -114,7 +109,6 @@ public final class AdminSocketClient {
                 }
             }
         } catch (Exception e) {
-            // Socket ngắt kết nối
         } finally {
             close();
         }

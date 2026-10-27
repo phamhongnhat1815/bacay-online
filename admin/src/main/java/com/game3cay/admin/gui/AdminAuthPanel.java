@@ -19,11 +19,7 @@ import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.border.EmptyBorder;
 
-/**
- * Màn hình đăng nhập tài khoản Quản trị viên (Admin).
- */
 public final class AdminAuthPanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -43,7 +39,6 @@ public final class AdminAuthPanel extends JPanel {
         super(new BorderLayout());
         setBackground(AdminTheme.BG);
 
-        // Center Card Container
         JPanel centerCard = new JPanel(new BorderLayout(0, 20)) {
             @Serial
             private static final long serialVersionUID = 1L;
@@ -63,7 +58,6 @@ public final class AdminAuthPanel extends JPanel {
         centerCard.setBorder(new EmptyBorder(36, 40, 36, 40));
         centerCard.setPreferredSize(new Dimension(460, 560));
 
-        // Header Title
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 4));
         JLabel title = AdminTheme.label("♠ BA CÂY ADMIN", 26, AdminTheme.GOLD, true);
         title.setHorizontalAlignment(SwingConstants.CENTER);
@@ -73,7 +67,6 @@ public final class AdminAuthPanel extends JPanel {
         titlePanel.add(subtitle);
         centerCard.add(titlePanel, BorderLayout.NORTH);
 
-        // Fields Panel with BoxLayout
         JPanel fields = new JPanel();
         fields.setOpaque(false);
         fields.setLayout(new BoxLayout(fields, BoxLayout.Y_AXIS));
@@ -99,7 +92,6 @@ public final class AdminAuthPanel extends JPanel {
 
         centerCard.add(fields, BorderLayout.CENTER);
 
-        // Actions & Status
         JPanel south = new JPanel();
         south.setOpaque(false);
         south.setLayout(new BoxLayout(south, BoxLayout.Y_AXIS));

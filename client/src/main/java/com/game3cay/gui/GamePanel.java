@@ -27,12 +27,7 @@ import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
-/**
- * GamePanel encapsulates the in-room playing board, action control toolbar
- * (Call, Raise, All-in, Fold, Card Visibility Toggle), and the waiting-for-round overlay.
- */
 public final class GamePanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -112,7 +107,6 @@ public final class GamePanel extends JPanel {
         waitingPanel.add(waitingActions, BorderLayout.SOUTH);
         table.setWaitingOverlay(waitingPanel);
 
-        // Row 1: Các nút hành động chính
         call.setToolTipText("Theo cược");
         fold.setToolTipText("Úp bài bỏ cuộc");
         allIn.setToolTipText("Tất tay toàn bộ số dư");
@@ -120,7 +114,6 @@ public final class GamePanel extends JPanel {
         eye.setToolTipText("Ẩn hoặc hiện ba lá bài của bạn");
         squeezeBtn.setToolTipText("Mở chế độ Nặn bài để hé mở điểm số");
         squeezeBtn.addActionListener(e -> openCardSqueeze());
-
 
         fold.setPreferredSize(new Dimension(90, 40));
         call.setPreferredSize(new Dimension(110, 40));
@@ -137,7 +130,6 @@ public final class GamePanel extends JPanel {
         }
         actionCenterStack.add(bettingBar);
 
-        // Row 2: Cụm nút cược nhanh
         quickBetsPanel.add(Theme.label("Tố nhanh:", 11, Theme.MUTED));
         for (var b : new Theme.Button[] {betPlus1, betPlus2, betHalfPot, betPot, betMax}) {
             b.setPreferredSize(new Dimension(64, 26));
@@ -169,12 +161,6 @@ public final class GamePanel extends JPanel {
         clear();
     }
 
-    /**
-     * Attaches ready and start game buttons to the waiting overlay.
-     *
-     * @param ready ready toggle button
-     * @param start host start button
-     */
     public void setWaitingControls(JButton ready, JButton start) {
         this.hostReadyButton = ready;
         waitingActions.removeAll();
@@ -185,7 +171,7 @@ public final class GamePanel extends JPanel {
         autoReadyCheck.setForeground(Theme.TEXT);
         autoReadyCheck.setOpaque(false);
         autoReadyCheck.setFocusPainted(false);
-        autoReadyCheck.setVisible(false); // Hệ thống máy chủ đã tự động sẵn sàng mặc định 100%
+        autoReadyCheck.setVisible(false);
         autoReadyCheck.addActionListener(e -> {
             PREFS.putBoolean("auto_ready", autoReadyCheck.isSelected());
             checkAutoReady();
@@ -194,12 +180,6 @@ public final class GamePanel extends JPanel {
         waitingActions.revalidate();
     }
 
-    /**
-     * Updates the room snapshot and player identity.
-     *
-     * @param r   room state snapshot
-     * @param uid client's user ID
-     */
     public void room(RoomSnapshot r, long uid) {
         this.room = r;
         if ("WAITING".equals(r.status()) && result != null) {
@@ -210,11 +190,6 @@ public final class GamePanel extends JPanel {
         render();
     }
 
-    /**
-     * Registers listener callback for player bet actions.
-     *
-     * @param action callback consumer
-     */
     public void onAction(Consumer<GameActionRequest> action) {
         call.addActionListener(e -> action.accept(new GameActionRequest(roundId, BetAction.CALL, null)));
         fold.addActionListener(e -> action.accept(new GameActionRequest(roundId, BetAction.FOLD, null)));
@@ -240,12 +215,6 @@ public final class GamePanel extends JPanel {
         });
     }
 
-    /**
-     * Resets state for a newly started game round.
-     *
-     * @param id  round identifier
-     * @param uid player user id
-     */
     public void start(String id, long uid) {
         resultTimer.stop();
         this.roundId = id;
@@ -261,16 +230,10 @@ public final class GamePanel extends JPanel {
         render();
     }
 
-    /**
-     * Checks if this panel accepts events for the given round ID.
-     */
     public boolean accepts(String id) {
         return id != null && id.equals(roundId);
     }
 
-    /**
-     * Updates round game state and plays turn notification sound when active.
-     */
     public void game(GameStateSnapshot value) {
         if (accepts(value.roundId()) && (game == null || value.stateVersion() > game.stateVersion())) {
             boolean turn = value.currentTurnUserId() != null && value.currentTurnUserId() == myId;
@@ -284,9 +247,6 @@ public final class GamePanel extends JPanel {
         }
     }
 
-    /**
-     * Updates private hand and balance snapshot for the local player.
-     */
     public void mine(PlayerStateSnapshot value) {
         if (accepts(value.roundId()) && (mine == null || value.stateVersion() >= mine.stateVersion())) {
             this.mine = value;
@@ -295,10 +255,6 @@ public final class GamePanel extends JPanel {
         }
     }
 
-    /**
-     * Updates betting state snapshot and recalculates default raise target.
-     * Phát âm thanh gõ chip realtime khi các người chơi khác Tố, Tất tay hoặc Theo cược.
-     */
     public void bets(BetStateSnapshot value) {
         if (accepts(value.roundId()) && (bets == null || value.stateVersion() >= bets.stateVersion())) {
             if (bets != null && (value.mainPot().compareTo(bets.mainPot()) > 0
@@ -313,9 +269,6 @@ public final class GamePanel extends JPanel {
         }
     }
 
-    /**
-     * Displays round result, schedules countdown timer, and plays audio cue.
-     */
     public void result(RoundResult value) {
         if (!accepts(value.roundId()) || result != null) {
             return;
@@ -549,13 +502,9 @@ public final class GamePanel extends JPanel {
         }
     }
 
-
-
     public GameTablePanel table() {
         return table;
     }
-
-
 
     public void openCardSqueeze() {
         if (mine == null || mine.myCards() == null || mine.myCards().size() < 3) {
@@ -570,9 +519,6 @@ public final class GamePanel extends JPanel {
         }).setVisible(true);
     }
 
-    /**
-     * Clears all state and resets table visuals.
-     */
     public void clear() {
         resultTimer.stop();
         autoReadyTimer.stop();

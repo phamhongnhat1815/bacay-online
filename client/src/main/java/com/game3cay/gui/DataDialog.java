@@ -23,12 +23,7 @@ import javax.swing.JScrollPane;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 
-/**
- * DataDialog provides a modal or modeless data viewer dialog with pagination controls,
- * used for inspecting personal Game History or the server-wide Leaderboard.
- */
 public final class DataDialog extends JDialog {
-
     @Serial
     private static final long serialVersionUID = 1L;
 

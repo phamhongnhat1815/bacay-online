@@ -4,15 +4,7 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
 
-/**
- * Một lá bài. Bất biến (immutable).
- *
- * <p>Không được gửi qua mạng trừ khi là phần của {@code DealCardPayload}
- * hoặc {@code RoundResult} (sau khi lật bài). Server KHÔNG BAO GIỜ
- * broadcast bài chưa lật qua {@code GAME_UPDATED}.
- */
 public final class Card implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -27,7 +19,6 @@ public final class Card implements Serializable {
     public Rank rank() { return rank; }
     public Suit suit() { return suit; }
 
-    /** Điểm đóng góp của lá bài vào tổng điểm (J/Q/K/10 = 0, A = 1, còn lại theo mặt số). */
     public int pointValue() { return rank.pointValue(); }
 
     @Override

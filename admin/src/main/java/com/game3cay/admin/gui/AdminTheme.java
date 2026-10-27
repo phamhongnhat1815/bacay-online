@@ -21,11 +21,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-/**
- * Bảng mã màu và tiện ích dựng giao diện đồng nhất chuẩn Royal Navy & Gold cho Admin.
- */
 public final class AdminTheme {
-
     public static final Color BG = new Color(6, 14, 25);
     public static final Color PANEL = new Color(13, 27, 46);
     public static final Color PANEL_ALT = new Color(18, 36, 62);

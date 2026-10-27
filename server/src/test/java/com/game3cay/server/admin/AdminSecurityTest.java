@@ -51,7 +51,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class AdminSecurityTest {
-
     private ConnectionProvider connections;
     private JdbcUserBUS userBus;
     private SessionRegistry sessions;
@@ -115,7 +114,6 @@ class AdminSecurityTest {
                     + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                     + ")");
 
-            // Seed user thường và admin
             String userPassHash = PasswordUtil.hash("password123");
             stmt.execute("INSERT INTO users (username, password_hash, display_name, email, balance, status, role) "
                     + "VALUES ('player_one', '" + userPassHash + "', 'Người Chơi 1', 'p1@test.com', 1000.00, 'ACTIVE', 'USER')");
@@ -173,26 +171,21 @@ class AdminSecurityTest {
     void normalUserCannotAccessAdminEndpoints() throws Exception {
         try (Socket socket = new Socket("127.0.0.1", serverSocket.getLocalPort());
              TestWire wire = new TestWire(socket)) {
-
-            // Đăng nhập bằng tài khoản USER thông thường
             Packet loginResp = wire.request(PacketType.LOGIN, new AuthRequest("player_one", "password123"));
             assertEquals(PacketType.AUTH_RESULT, loginResp.getType());
             AuthResult auth = (AuthResult) loginResp.getData();
             assertTrue(auth.success());
             assertEquals("USER", auth.role());
 
-            // Thử gọi ADMIN_STATS_REQ
             Packet statsResp = wire.request(PacketType.ADMIN_STATS_REQ, null);
             assertEquals(PacketType.ERROR, statsResp.getType());
             Packet.ErrorPayload err = (Packet.ErrorPayload) statsResp.getData();
             assertEquals(ErrorCode.FORBIDDEN, err.code());
 
-            // Thử gọi ADMIN_USERS_PAGE_REQ
             Packet usersResp = wire.request(PacketType.ADMIN_USERS_PAGE_REQ, new AdminUserFilterRequest("", "ALL", 0, 10));
             assertEquals(PacketType.ERROR, usersResp.getType());
             assertEquals(ErrorCode.FORBIDDEN, ((Packet.ErrorPayload) usersResp.getData()).code());
 
-            // Thử gọi ADMIN_INSPECT_ROOM_REQ
             Packet inspectResp = wire.request(PacketType.ADMIN_INSPECT_ROOM_REQ, 1L);
             assertEquals(PacketType.ERROR, inspectResp.getType());
             assertEquals(ErrorCode.FORBIDDEN, ((Packet.ErrorPayload) inspectResp.getData()).code());
@@ -203,31 +196,26 @@ class AdminSecurityTest {
     void adminUserCanAccessStatsAndManageUsers() throws Exception {
         try (Socket socket = new Socket("127.0.0.1", serverSocket.getLocalPort());
              TestWire wire = new TestWire(socket)) {
-
-            // Đăng nhập bằng tài khoản ADMIN
             Packet loginResp = wire.request(PacketType.LOGIN, new AuthRequest("admin_boss", "adminPass123"));
             assertEquals(PacketType.AUTH_RESULT, loginResp.getType());
             AuthResult auth = (AuthResult) loginResp.getData();
             assertTrue(auth.success());
             assertEquals("ADMIN", auth.role());
 
-            // 1. Thống kê hệ thống
             Packet statsResp = wire.request(PacketType.ADMIN_STATS_REQ, null);
             assertEquals(PacketType.ADMIN_STATS_RESP, statsResp.getType());
             AdminStatsSnapshot stats = (AdminStatsSnapshot) statsResp.getData();
             assertNotNull(stats);
-            assertEquals(1, stats.onlineUsers()); // Chính admin đang online
-            assertEquals(2, stats.totalRegisteredUsers()); // player_one và admin_boss
+            assertEquals(1, stats.onlineUsers());
+            assertEquals(2, stats.totalRegisteredUsers());
             assertEquals(new BigDecimal("6000.00"), stats.totalBalanceInCirculation());
 
-            // 2. Tra cứu danh sách người dùng
             Packet usersResp = wire.request(PacketType.ADMIN_USERS_PAGE_REQ, new AdminUserFilterRequest("", "ALL", 0, 10));
             assertEquals(PacketType.ADMIN_USERS_PAGE_RESP, usersResp.getType());
             @SuppressWarnings("unchecked")
             PageResult<AdminUserItem> usersPage = (PageResult<AdminUserItem>) usersResp.getData();
             assertEquals(2, usersPage.totalItems());
 
-            // 3. Khóa tài khoản người chơi
             AdminUserItem target = usersPage.items().stream()
                     .filter(u -> "player_one".equals(u.username()))
                     .findFirst()
@@ -236,29 +224,23 @@ class AdminSecurityTest {
             Packet lockResp = wire.request(PacketType.ADMIN_LOCK_USER_REQ, new AdminLockUserRequest(target.userId(), true));
             assertEquals(PacketType.ACK, lockResp.getType());
 
-            // Kiểm tra trạng thái đã bị khóa trong DB
             assertEquals("BLOCKED", userBus.getProfile(target.userId()).status());
 
-            // 4. Cộng điểm cho người chơi (+500 điểm)
             Packet adjustResp = wire.request(PacketType.ADMIN_ADJUST_BALANCE_REQ,
                     new AdminAdjustBalanceRequest(target.userId(), new BigDecimal("500.00"), "Cộng điểm thưởng"));
             assertEquals(PacketType.ACK, adjustResp.getType());
 
-            // Kiểm tra số dư mới
             assertEquals(new BigDecimal("1500.00"), userBus.getProfile(target.userId()).balance());
 
-            // 5. Giám sát 20 bàn chơi
             Packet roomsResp = wire.request(PacketType.ADMIN_ROOMS_MONITOR_REQ, null);
             assertEquals(PacketType.ADMIN_ROOMS_MONITOR_RESP, roomsResp.getType());
             @SuppressWarnings("unchecked")
             List<AdminRoomDetail> roomDetails = (List<AdminRoomDetail>) roomsResp.getData();
             assertEquals(20, roomDetails.size());
 
-            // 6. Cưỡng chế giải tán / đặt lại bàn #1
             Packet resetResp = wire.request(PacketType.ADMIN_FORCE_RESET_ROOM, new AdminResetRoomRequest(1L, "Reset kiểm thử"));
             assertEquals(PacketType.ACK, resetResp.getType());
 
-            // 7. Soi chi tiết ván bài bàn #1 (God-View)
             Packet inspectResp = wire.request(PacketType.ADMIN_INSPECT_ROOM_REQ, 1L);
             assertEquals(PacketType.ADMIN_INSPECT_ROOM_RESP, inspectResp.getType());
             AdminLiveMatchDetail liveDetail = (AdminLiveMatchDetail) inspectResp.getData();
@@ -267,7 +249,6 @@ class AdminSecurityTest {
             assertEquals("WAITING", liveDetail.status());
             assertNotNull(liveDetail.players());
 
-            // 8. Admin bị cấm tham gia bàn chơi (tách biệt hoàn toàn Client - Admin)
             Packet createRoomResp = wire.request(PacketType.CREATE_ROOM, new CreateRoomRequest("Bàn Admin", 2, 8, BigDecimal.ONE));
             assertEquals(PacketType.ERROR, createRoomResp.getType());
             assertEquals(ErrorCode.FORBIDDEN, ((Packet.ErrorPayload) createRoomResp.getData()).code());

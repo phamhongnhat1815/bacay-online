@@ -27,14 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.LongConsumer;
 
-/**
- * Giao diện Sảnh chờ (Lobby) hiển thị đúng 20 bàn chơi cố định theo thứ tự số tăng dần.
- * <p>
- * Cho phép người chơi xem trực tiếp số lượng người tại từng bàn, mức cược cơ bản
- * và trạng thái bàn (Đang chờ, Đang chơi, Đã đầy).
- */
 public final class LobbyPanel extends JPanel {
-
     private final TableCard[] tables = new TableCard[20];
     private final JLabel summaryLabel = Theme.label("Đang tải danh sách bàn chơi…", 14, Theme.MUTED);
     private final Theme.Button quickPlayButton = new Theme.Button("⚡ CHƠI NGAY", "gold");
@@ -145,7 +138,6 @@ public final class LobbyPanel extends JPanel {
         TableCard bestCard = null;
         int maxOccupants = -1;
 
-        // Ưu tiên 1: Bàn đang chờ có nhiều người nhất nhưng chưa đầy
         for (TableCard tc : tables) {
             if (tc.data != null && "WAITING".equals(tc.data.status()) && tc.data.playerCount() < tc.data.maxPlayers()) {
                 if (tc.data.playerCount() > maxOccupants && tc.data.playerCount() > 0) {
@@ -155,7 +147,6 @@ public final class LobbyPanel extends JPanel {
             }
         }
 
-        // Ưu tiên 2: Nếu chưa có bàn nào có người đang chờ, chọn bàn trống đầu tiên
         if (bestCard == null) {
             for (TableCard tc : tables) {
                 if (tc.data != null && "WAITING".equals(tc.data.status()) && tc.data.playerCount() == 0) {
@@ -290,12 +281,10 @@ public final class LobbyPanel extends JPanel {
             boolean isPlaying = data != null && "PLAYING".equals(data.status());
             boolean isResult = data != null && "RESULT".equals(data.status());
 
-            // Tên bàn
             g.setFont(Theme.font(20, true));
             g.setColor(Theme.TEXT);
             g.drawString("Bàn " + String.format("%02d", number), 17, 31);
 
-            // Nhãn trạng thái bàn
             g.setFont(Theme.font(11, true));
             String tag = isResult ? "KẾT QUẢ"
                     : isPlaying ? "ĐANG CHƠI"
@@ -305,12 +294,10 @@ public final class LobbyPanel extends JPanel {
             g.setColor((isPlaying || isResult) ? Theme.GOLD : new Color(110, 190, 240));
             g.drawString(tag, width - 15 - g.getFontMetrics().stringWidth(tag), 29);
 
-            // Hình minh họa bàn chơi
             int tableWidth = Math.min(106, width / 2);
             int tableHeight = Math.min(65, height - 60);
             g.drawImage(Assets.get("table.png", 240), 14, 39, tableWidth, tableHeight, null);
 
-            // Số người chơi / 8
             g.setFont(Theme.font(25, true));
             g.setColor(playerCount > 0 ? Theme.TEXT : Theme.MUTED);
             g.drawString(String.valueOf(playerCount), width - 63, 70);
@@ -319,22 +306,18 @@ public final class LobbyPanel extends JPanel {
             g.setColor(Theme.MUTED);
             g.drawString("/ 8", width - 43, 70);
 
-            // 8 chấm tròn biểu thị 8 vị trí ghế
             for (int i = 0; i < 8; i++) {
                 g.setColor(i < playerCount ? Theme.GOLD : new Color(38, 58, 88));
                 g.fillOval(width - 72 + (i % 4) * 12, 79 + (i / 4) * 12, 7, 7);
             }
 
-            // Đường kẻ chân card
             g.setColor(new Color(42, 65, 96));
             g.drawLine(16, height - 34, width - 16, height - 34);
 
-            // Cược cơ bản
             g.setFont(Theme.font(12, false));
             g.setColor(Theme.GOLD);
             g.drawString((data == null) ? "—" : compactBet(data.betAmount()), 17, height - 13);
 
-            // Nhãn nút điều hướng
             g.setColor(hover ? Theme.GOLD : Theme.MUTED);
             String actionLabel = (data == null) ? "Đang tải…"
                     : (isPlaying || isResult) ? "Chờ ván sau"

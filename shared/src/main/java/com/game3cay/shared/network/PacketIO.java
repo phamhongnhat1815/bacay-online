@@ -10,18 +10,7 @@ import java.math.BigDecimal;
 import java.net.Socket;
 import java.util.List;
 
-/**
- * Tiện ích I/O cho giao thức mạng {@link Packet}.
- * <p>
- * Đảm nhận:
- * <ul>
- *   <li>Thiết lập {@link ObjectInputFilter} bảo mật chống deserialization exploit.</li>
- *   <li>Đọc và ghi gói tin có kiểm tra hợp lệ cấu trúc và payload.</li>
- *   <li>Đồng bộ hóa việc ghi trên {@link ObjectOutputStream}.</li>
- * </ul>
- */
 public final class PacketIO {
-
     private static final String DESERIALIZATION_FILTER_PATTERN =
             "maxdepth=24;maxarray=4096;"
                     + "com.game3cay.shared.model.*;"
@@ -38,27 +27,12 @@ public final class PacketIO {
 
     private PacketIO() {}
 
-    /**
-     * Mở luồng ObjectInputStream từ Socket và cài đặt bộ lọc bảo mật deserialization.
-     *
-     * @param socket kết nối Socket đang mở
-     * @return ObjectInputStream đã được lọc an toàn
-     * @throws IOException nếu lỗi khởi tạo luồng
-     */
     public static ObjectInputStream openInput(Socket socket) throws IOException {
         var input = new ObjectInputStream(socket.getInputStream());
         input.setObjectInputFilter(ObjectInputFilter.Config.createFilter(DESERIALIZATION_FILTER_PATTERN));
         return input;
     }
 
-    /**
-     * Đọc một {@link Packet} từ luồng nhập và kiểm tra tính hợp lệ dữ liệu.
-     *
-     * @param input luồng ObjectInputStream
-     * @return Packet hợp lệ
-     * @throws IOException            nếu dữ liệu sai định dạng hoặc lỗi socket
-     * @throws ClassNotFoundException  nếu lớp không tìm thấy trong classpath
-     */
     public static Packet read(ObjectInputStream input) throws IOException, ClassNotFoundException {
         Object raw = input.readObject();
         if (!(raw instanceof Packet packet)) {
@@ -68,13 +42,6 @@ public final class PacketIO {
         return packet;
     }
 
-    /**
-     * Ghi một {@link Packet} ra luồng xuất, đảm bảo đồng bộ hóa luồng ghi và reset cache.
-     *
-     * @param output luồng ObjectOutputStream
-     * @param packet gói tin cần gửi
-     * @throws IOException nếu lỗi ghi mạng
-     */
     public static void write(ObjectOutputStream output, Packet packet) throws IOException {
         validate(packet);
         synchronized (output) {
@@ -83,8 +50,6 @@ public final class PacketIO {
             output.flush();
         }
     }
-
-    // --- Validation Helpers ---
 
     private static boolean isNonEmptyText(String value, int maxLength) {
         return value != null && !value.isBlank() && value.length() <= maxLength;
@@ -102,12 +67,6 @@ public final class PacketIO {
                 && amount.scale() <= 2;
     }
 
-    /**
-     * Xác thực cấu trúc cơ bản và payload của Packet.
-     *
-     * @param packet gói tin cần xác thực
-     * @throws IOException nếu gói tin không hợp lệ
-     */
     public static void validate(Packet packet) throws IOException {
         if (packet == null) {
             throw new IOException("Packet không được null");

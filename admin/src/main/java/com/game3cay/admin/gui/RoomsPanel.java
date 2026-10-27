@@ -23,11 +23,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
-/**
- * Tab Giám Sát Bàn Chơi: Theo dõi 20 bàn chơi thời gian thực và cưỡng chế giải tán bàn kẹt.
- */
 public final class RoomsPanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -61,7 +57,6 @@ public final class RoomsPanel extends JPanel {
         setBackground(AdminTheme.BG);
         setBorder(new EmptyBorder(24, 28, 24, 28));
 
-        // Top Toolbar
         JPanel topToolbar = AdminTheme.transparent(new BorderLayout());
 
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
@@ -76,7 +71,6 @@ public final class RoomsPanel extends JPanel {
         topToolbar.add(actions, BorderLayout.EAST);
         add(topToolbar, BorderLayout.NORTH);
 
-        // Center Table
         roomsTable.setFont(AdminTheme.font(13, false));
         roomsTable.setRowHeight(36);
         roomsTable.setBackground(AdminTheme.PANEL);
@@ -118,12 +112,10 @@ public final class RoomsPanel extends JPanel {
         scrollPane.setBorder(BorderFactory.createLineBorder(AdminTheme.BORDER));
         add(scrollPane, BorderLayout.CENTER);
 
-        // Bottom
         JPanel bottomBar = AdminTheme.transparent(new BorderLayout());
         bottomBar.add(statusLabel, BorderLayout.WEST);
         add(bottomBar, BorderLayout.SOUTH);
 
-        // Actions
         inspectRoomButton.addActionListener(e -> handleInspectRoom());
 
         roomsTable.addMouseListener(new java.awt.event.MouseAdapter() {

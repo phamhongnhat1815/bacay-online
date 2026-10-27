@@ -50,18 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
-/**
- * Quản lý toàn bộ 20 bàn chơi cố định của máy chủ Ba Cây.
- * <p>
- * Đồng bộ hóa trạng thái phòng trên bộ nhớ RAM:
- * <ul>
- *   <li>Sử dụng lock {@code synchronized(this)} bảo vệ các biến phòng, ghế ngồi và thành viên.</li>
- *   <li>Truy vấn I/O CSDL và ghi đĩa journal chạy bất đồng bộ ngoài lock để không làm nghẽn luồng game.</li>
- *   <li>Tự động chuyển lượt hoặc úp bài khi hết 30 giây (quản lý bởi phương thức {@link #tick()}).</li>
- * </ul>
- */
 public final class RoomManager implements RoomService {
-
     public static final int TABLE_COUNT = 20;
     public static final int AUTO_START_SECONDS = 8;
     public static final int DISCONNECT_GRACE_SECONDS = 15;
@@ -84,9 +73,6 @@ public final class RoomManager implements RoomService {
     private final int turnTimeoutSeconds = RuntimeSettings.integer(
             "server.properties", "game.turnTimeoutSeconds", 30, 5, 300);
 
-    /**
-     * Thông tin thành viên ngồi trong bàn.
-     */
     private static final class Member {
         UserDTO user;
         final int seat;
@@ -98,9 +84,6 @@ public final class RoomManager implements RoomService {
         }
     }
 
-    /**
-     * Trạng thái nội bộ của một bàn chơi.
-     */
     private static final class Room {
         final long id;
         CreateRoomRequest settings;
@@ -142,7 +125,6 @@ public final class RoomManager implements RoomService {
         this.users = users;
         this.persistence = persistence;
 
-        // Khởi tạo 20 bàn chơi mặc định (Bàn 1 -> Bàn 20)
         for (long id = 1; id <= TABLE_COUNT; id++) {
             CreateRoomRequest defaultSettings = new CreateRoomRequest("Bàn " + id, 2, 8, new BigDecimal("10.00"));
             rooms.put(id, new Room(id, defaultSettings));
@@ -186,7 +168,6 @@ public final class RoomManager implements RoomService {
 
     @Override
     public synchronized RoomSnapshot join(UserDTO actor, JoinRoomRequest request) throws BUSException {
-        // Hỗ trợ Tự động kết nối lại (Smart Auto-Reconnect) khi người chơi bị rớt mạng tạm thời
         Long currentRoomId = membership.get(actor.userId());
         if (currentRoomId != null && currentRoomId.equals(request.roomId())) {
             Room room = rooms.get(request.roomId());
@@ -196,7 +177,6 @@ public final class RoomManager implements RoomService {
                 sendSystemChat(room, actor.displayName() + " đã khôi phục kết nối vào bàn.");
                 notifyRoomUpdated(room);
 
-                // Đồng bộ lại tức thì trạng thái ván bài đang diễn ra nếu có
                 if (room.roundId != null && engine.isRoundActive(room.roundId)) {
                     try {
                         sendPrivatePacket(
@@ -229,7 +209,6 @@ public final class RoomManager implements RoomService {
             throw fail(ErrorCode.ROOM_NOT_FOUND, "Bàn chơi không tồn tại");
         }
         if (!"WAITING".equals(room.state)) {
-            // Cho phép người chơi vừa bị rớt mạng kết nối lại vào đúng bàn cũ (grace period 15s)
             RecentRoom recent = recentRoomHistory.get(actor.userId());
             boolean isRejoiningRecentRoom = recent != null
                     && recent.roomId == request.roomId()
@@ -251,7 +230,6 @@ public final class RoomManager implements RoomService {
             room.ownerId = user.userId();
         }
 
-        // Tìm số ghế trống nhỏ nhất từ 1 đến 8
         int seatNumber = 1;
         Set<Integer> occupiedSeats = new HashSet<>();
         for (Member m : room.members.values()) {
@@ -295,7 +273,6 @@ public final class RoomManager implements RoomService {
         membership.remove(userId);
         chatTimes.remove(userId);
 
-        // Chuyển quyền chủ bàn nếu chủ bàn cũ rời đi
         if (room.ownerId == userId) {
             room.ownerId = room.members.isEmpty() ? 0 : room.members.keySet().iterator().next();
         }
@@ -345,9 +322,6 @@ public final class RoomManager implements RoomService {
         }
     }
 
-    /**
-     * Đổi mức cược cơ bản của bàn. Chỉ có chủ bàn được đổi khi bàn đang ở trạng thái WAITING.
-     */
     public synchronized RoomSnapshot changeBet(long userId, BigDecimal newBetAmount) throws BUSException {
         Room room = requireUserRoom(userId);
         if (room.ownerId != userId) {
@@ -376,7 +350,6 @@ public final class RoomManager implements RoomService {
                 newBetAmount.setScale(2)
         );
 
-        // Hủy sẵn sàng của tất cả mọi người để xác nhận mức cược mới
         for (Member m : room.members.values()) {
             m.ready = false;
         }
@@ -429,9 +402,6 @@ public final class RoomManager implements RoomService {
         }
     }
 
-    /**
-     * Bắt đầu ván bài mới: nạp lại số dư mới nhất từ DB, chia bài và broadcast sự kiện.
-     */
     public void start(long userId) throws BUSException {
         if (users == null || persistence == null) {
             throw fail(ErrorCode.INTERNAL_ERROR, "Chưa cấu hình cơ sở dữ liệu ván bài");
@@ -446,7 +416,6 @@ public final class RoomManager implements RoomService {
             capturedVersion = room.version;
         }
 
-        // Lấy số dư mới nhất từ DB ngoài lock
         Map<Long, UserDTO> freshUsers = new LinkedHashMap<>();
         for (long id : memberIds) {
             freshUsers.put(id, users.getProfile(id));
@@ -475,7 +444,6 @@ public final class RoomManager implements RoomService {
                     ))
                     .toList();
 
-            // Đưa chủ bàn về đầu danh sách người chia bài
             List<RoundParticipant> orderedParticipants = new ArrayList<>(participants);
             int ownerIndex = -1;
             for (int i = 0; i < orderedParticipants.size(); i++) {
@@ -514,10 +482,8 @@ public final class RoomManager implements RoomService {
                 room.version++;
                 notifyRoomUpdated(room);
 
-                // Phát sóng thông báo ván bắt đầu
                 broadcastToRoom(room, PacketType.START_GAME, new GameStartInfo(room.id, roundId, 1));
 
-                // Chia 3 lá bài riêng cho từng người tham gia
                 for (RoundParticipant p : orderedParticipants) {
                     sendPrivatePacket(
                             p.userId(),
@@ -526,7 +492,6 @@ public final class RoomManager implements RoomService {
                     );
                 }
 
-
                 publishGameUpdate(room);
             } catch (GameEngineException e) {
                 throw fail(e.getErrorCode(), e.getMessage());
@@ -534,9 +499,6 @@ public final class RoomManager implements RoomService {
         }
     }
 
-    /**
-     * Xử lý thao tác đặt cược của người chơi (Theo, Tố, Tất tay, Úp bài).
-     */
     public synchronized void action(long userId, GameActionRequest request) throws BUSException {
         Room room = requireUserRoom(userId);
         if (room.roundId == null || !room.roundId.equals(request.roundId())) {
@@ -547,7 +509,6 @@ public final class RoomManager implements RoomService {
             engine.handleAction(room.roundId, userId, request.action(), request.raiseTo());
             room.lastActionNanos = System.nanoTime();
             room.afkUsers.remove(userId);
-
 
             publishGameUpdate(room);
         } catch (GameEngineException e) {
@@ -565,7 +526,6 @@ public final class RoomManager implements RoomService {
             broadcastToRoom(room, PacketType.GAME_UPDATED, stateSnapshot);
             broadcastToRoom(room, PacketType.BET_UPDATED, engine.getBetSnapshot(room.roundId));
 
-            // Cập nhật trạng thái bài và số dư riêng cho từng người chơi
             for (CompletedRound.PrivateHand hand : room.hands) {
                 if (room.members.containsKey(hand.userId())) {
                     sendPrivatePacket(
@@ -576,12 +536,10 @@ public final class RoomManager implements RoomService {
                 }
             }
 
-            // Nếu ván vẫn đang tiếp tục, không làm gì thêm
             if (engine.isRoundActive(room.roundId)) {
                 return;
             }
 
-            // Ván đã kết thúc: xử lý kết quả
             RoundResult result = engine.getRoundResult(room.roundId);
             if (!room.resultSent) {
                 try {
@@ -612,7 +570,6 @@ public final class RoomManager implements RoomService {
                         )
                 );
 
-                // Cập nhật số dư người chơi và đặt lại cờ sẵn sàng
                 for (Member m : room.members.values()) {
                     m.ready = false;
                     for (var p : result.playerResults()) {
@@ -634,7 +591,6 @@ public final class RoomManager implements RoomService {
                         }
                     }
                 }
-
 
                 System.out.println("[GAME] " + result.roundStatus() + " roomId=" + room.id + " roundId=" + room.roundId);
 
@@ -669,19 +625,12 @@ public final class RoomManager implements RoomService {
         }
     }
 
-    /**
-     * Nhịp định kỳ 1 giây: quản lý chuyển trạng thái bàn từ RESULT -> WAITING,
-     * đếm ngược tự động bắt đầu ván mới, tự động kick người chơi AFK / không đủ tiền,
-     * và tự động úp bài người chơi nếu quá 30 giây thời gian lượt.
-     */
     public synchronized void tick() {
         for (Room room : List.copyOf(rooms.values())) {
-            // Khi hết thời gian hiển thị kết quả, đưa bàn về trạng thái chờ
             if ("RESULT".equals(room.state) && resultClock.getAsLong() >= room.resultUntilNanos) {
                 room.state = "WAITING";
                 room.resultUntilNanos = 0;
 
-                // 1. Kick người chơi AFK timeout (treo máy) về sảnh để bảo vệ số dư tài khoản
                 for (Long afkId : List.copyOf(room.afkUsers)) {
                     Member afkMember = room.members.get(afkId);
                     if (afkMember != null) {
@@ -695,7 +644,6 @@ public final class RoomManager implements RoomService {
                 }
                 room.afkUsers.clear();
 
-                // 2. Chuyển người chơi không đủ số dư cược sàn về sảnh
                 for (Member m : List.copyOf(room.members.values())) {
                     if (m.user.balance().compareTo(room.settings.betAmount()) < 0) {
                         String balanceNotice = "Số dư không đủ mức cược tối thiểu (" + room.settings.betAmount() + " điểm), bạn đã được chuyển về sảnh.";
@@ -707,7 +655,6 @@ public final class RoomManager implements RoomService {
                     }
                 }
 
-                // 3. Tự động sẵn sàng cho mọi người chơi còn lại
                 for (Member m : room.members.values()) {
                     m.ready = true;
                 }
@@ -717,14 +664,12 @@ public final class RoomManager implements RoomService {
                 notifyRoomUpdated(room);
             }
 
-            // Quản lý đếm ngược tự động bắt đầu ván mới trong trạng thái WAITING
             if ("WAITING".equals(room.state) && room.autoStartDeadlineNanos > 0) {
                 List<Member> eligible = room.members.values().stream()
                         .filter(m -> m.ready && m.user.balance().compareTo(room.settings.betAmount()) >= 0)
                         .toList();
                 if (eligible.size() >= room.settings.minPlayers()) {
                     if (resultClock.getAsLong() >= room.autoStartDeadlineNanos) {
-                        // Hết thời gian đếm ngược: Tự động chia bài bắt đầu ván mới!
                         room.autoStartDeadlineNanos = 0;
                         try {
                             start(room.ownerId);
@@ -732,7 +677,6 @@ public final class RoomManager implements RoomService {
                             System.err.println("[ROOM] Tự động bắt đầu ván roomId=" + room.id + " lỗi: " + e.getMessage());
                         }
                     } else {
-                        // Cập nhật nhịp đếm ngược cho client
                         room.version++;
                         notifyRoomUpdated(room);
                     }
@@ -753,7 +697,6 @@ public final class RoomManager implements RoomService {
                     continue;
                 }
 
-                // Kiểm tra quá giờ lượt chơi (turn timeout)
                 if (System.nanoTime() - room.lastActionNanos >= TimeUnit.SECONDS.toNanos(turnTimeoutSeconds)) {
                     Long currentTurnId = engine.getPublicSnapshot(room.roundId).currentTurnUserId();
                     if (currentTurnId != null) {

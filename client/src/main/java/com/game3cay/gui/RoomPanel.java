@@ -28,11 +28,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Giao diện phòng chơi (bàn đấu 8 ghế) kèm thanh chat thời gian thực.
- */
 public final class RoomPanel extends JPanel {
-
     private final JLabel titleLabel = Theme.label("", 21, Theme.TEXT);
     private final JLabel detailLabel = Theme.label("", 12, Theme.MUTED);
 
@@ -72,7 +68,6 @@ public final class RoomPanel extends JPanel {
 
         leaveButton.setPreferredSize(new Dimension(145, 44));
 
-        // Thanh Header trên cùng
         var headerPanel = Theme.transparent(new BorderLayout(18, 0));
         var leftHeader = Theme.transparent(new FlowLayout(FlowLayout.LEFT, 12, 0));
         leftHeader.add(leaveButton);
@@ -89,7 +84,6 @@ public final class RoomPanel extends JPanel {
         headerPanel.add(rightHeader, BorderLayout.EAST);
         add(headerPanel, BorderLayout.NORTH);
 
-        // Khu vực trung tâm: Bàn game + Khung chat
         var centralArea = Theme.transparent(new BorderLayout(12, 0));
         centralArea.add(gamePanel, BorderLayout.CENTER);
 
@@ -263,7 +257,7 @@ public final class RoomPanel extends JPanel {
 
     public void appendChat(ChatMessage message) {
         if (message == null || "SYSTEM".equalsIgnoreCase(message.type()) || message.senderId() == 0L) {
-            return; // Khung chat chỉ hiển thị chat giữa người chơi chứ không hiển thị diễn biến của ván bài
+            return;
         }
         StyledDocument doc = chatPane.getStyledDocument();
         try {
@@ -278,8 +272,6 @@ public final class RoomPanel extends JPanel {
             StyleConstants.setBold(nameStyle, true);
 
             String sender = (message.senderDisplayName() == null || message.senderDisplayName().isBlank()) ? "Người chơi" : message.senderDisplayName();
-
-
 
             String timeString = DateTimeFormatter.ofPattern("HH:mm")
                     .withZone(ZoneId.systemDefault())

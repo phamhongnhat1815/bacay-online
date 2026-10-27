@@ -23,11 +23,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
-/**
- * Tab Sổ Cái Kiểm Toán: Giám sát toàn bộ biến động điểm số và giao dịch tài chính hệ thống.
- */
 public final class LedgerPanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -64,7 +60,6 @@ public final class LedgerPanel extends JPanel {
         setBackground(AdminTheme.BG);
         setBorder(new EmptyBorder(24, 28, 24, 28));
 
-        // Top Header
         JPanel topBar = AdminTheme.transparent(new BorderLayout());
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         titlePanel.add(AdminTheme.label("SỔ CÁI KIỂM TOÁN TÀI CHÍNH", 20, AdminTheme.GOLD, true));
@@ -76,7 +71,6 @@ public final class LedgerPanel extends JPanel {
         topBar.add(actions, BorderLayout.EAST);
         add(topBar, BorderLayout.NORTH);
 
-        // Center Table
         ledgerTable.setFont(AdminTheme.font(13, false));
         ledgerTable.setRowHeight(36);
         ledgerTable.setBackground(AdminTheme.PANEL);
@@ -118,7 +112,6 @@ public final class LedgerPanel extends JPanel {
         scrollPane.setBorder(BorderFactory.createLineBorder(AdminTheme.BORDER));
         add(scrollPane, BorderLayout.CENTER);
 
-        // Bottom Pagination
         JPanel bottomBar = AdminTheme.transparent(new BorderLayout());
         bottomBar.add(pageStatusLabel, BorderLayout.WEST);
 
@@ -129,7 +122,6 @@ public final class LedgerPanel extends JPanel {
         bottomBar.add(pageNav, BorderLayout.EAST);
         add(bottomBar, BorderLayout.SOUTH);
 
-        // Events
         refreshButton.addActionListener(e -> {
             if (onPageChangeCallback != null) {
                 onPageChangeCallback.accept(currentPage);

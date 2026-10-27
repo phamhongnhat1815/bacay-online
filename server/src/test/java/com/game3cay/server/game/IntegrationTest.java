@@ -160,7 +160,7 @@ class IntegrationTest {
             .compareTo(new BigDecimal("2000.00")));
     assertThrows(BUSException.class, () -> games.getHistory(1, -1, 20));
     assertEquals(3, games.getLeaderboard(0, 20).items().size());
-    // Cùng id nhưng nội dung khác không được xem như retry hợp lệ.
+
     var changed = new CompletedRound(round.result(), 1, "Khác phòng", round.ante(), round.hands());
     assertThrows(BUSException.class, () -> games.saveCompleted(changed));
   }
@@ -169,7 +169,7 @@ class IntegrationTest {
   void failureHalfWayRollsBackAllTablesAndPoints() throws Exception {
     var people = users(2);
     var good = completed(people);
-    // Vi phạm UNIQUE lá bài ở người thứ hai, sau khi đã ghi người đầu.
+
     var bad =
         new CompletedRound(
             good.result(),
@@ -238,7 +238,7 @@ class IntegrationTest {
       assertTrue(saved.await(5, TimeUnit.SECONDS));
     }
     assertEquals(1, count("play_rounds"));
-    // Retry sau lần commit nhưng trước xóa journal cũng không cộng trùng.
+
     games.saveCompleted(round);
     assertEquals(1, users.getProfile(round.result().playerResults().get(0).userId()).totalGames());
   }
@@ -316,7 +316,7 @@ class IntegrationTest {
         String rid = ((GameStartInfo) a.await(PacketType.START_GAME).getData()).roundId();
         var sb = (GameStateSnapshot) b.await(PacketType.GAME_UPDATED).getData();
         assertEquals(people.get(1).userId(), sb.currentTurnUserId());
-        // Sai lượt, sai roundId không đổi trạng thái.
+
         assertEquals(
             ErrorCode.NOT_YOUR_TURN,
             ((Packet.ErrorPayload)
@@ -359,7 +359,7 @@ class IntegrationTest {
                     p ->
                         p.getData() instanceof RoomChatEvent e
                             && "Chỉ phòng một".equals(e.message().content())));
-        // Chờ worker commit bằng tín hiệu từ DB, không dựa vào ACK action.
+
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (count("play_rounds") == 0 && System.nanoTime() < deadline) Thread.sleep(20);
         var history =
@@ -368,7 +368,7 @@ class IntegrationTest {
         var empty =
             (PageResult<?>) c.request(PacketType.GET_HISTORY, new PageRequest(0, 20)).getData();
         assertEquals(0, empty.totalItems());
-        // Phòng thứ hai tiếp tục hoạt động độc lập; đóng client thứ tư => hủy, hoàn điểm.
+
         c.request(PacketType.START_GAME_REQUEST, null);
         String rid2 = ((GameStartInfo) c.await(PacketType.START_GAME).getData()).roundId();
         d.close();
@@ -424,7 +424,7 @@ class IntegrationTest {
           assertThrows(BUSException.class, () -> rooms.join(people.get(0), new JoinRoomRequest(2)))
               .getErrorCode());
       rooms.onDisconnected(people.get(1).userId());
-      // Giờ còn một người => ván hủy, khóa chuyển sang hàng chờ lưu.
+
       assertEquals("RESULT", rooms.listRooms().getFirst().status());
     }
   }

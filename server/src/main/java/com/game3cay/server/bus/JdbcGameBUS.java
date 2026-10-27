@@ -30,34 +30,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Cài đặt {@link GameBUS} sử dụng JDBC và MySQL.
- * <p>
- * Đảm bảo tính toàn vẹn dữ liệu tài chính (ACID transaction):
- * <ul>
- *   <li>Sắp xếp userId tăng dần khi khóa dòng (SELECT FOR UPDATE) để ngăn chặn hoàn toàn hiện tượng deadlock.</li>
- *   <li>Kiểm tra tính Idempotent bằng fingerprint hash để chống ghi đúp kết quả.</li>
- *   <li>Ghi sổ cái kép (play_ledger) bảo đảm số dư sau ván đúng bằng số dư trước ván cộng trừ lợi nhuận.</li>
- * </ul>
- */
 public final class JdbcGameBUS implements GameBUS {
-
     private final ConnectionProvider connections;
 
     public JdbcGameBUS(ConnectionProvider connections) {
         this.connections = Objects.requireNonNull(connections, "connections không được null");
     }
 
-    /**
-     * Kiểm tra nhanh cấu trúc bảng CSDL có sẵn sàng không.
-     *
-     * @throws SQLException nếu thiếu bảng hoặc không kết nối được
-     */
     public void checkSchema() throws SQLException {
         try (Connection conn = connections.open();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT round_id FROM play_rounds WHERE 1=0")) {
-            // Kiểm tra bảng tồn tại thành công
         }
     }
 
@@ -78,26 +61,20 @@ public final class JdbcGameBUS implements GameBUS {
         try (Connection conn = connections.open()) {
             conn.setAutoCommit(false);
             try {
-                // Khóa người chơi theo thứ tự ID tăng dần để ngăn ngừa deadlock giữa các transaction song song
                 Map<Long, BigDecimal> currentBalances = lockUsersInOrder(conn, result.playerResults());
 
-                // Kiểm tra xem roundId đã được lưu chưa (Idempotency check)
                 if (isAlreadySaved(conn, result, contentHash)) {
                     verifyDuplicateMatch(conn, result);
                     conn.rollback();
                     return;
                 }
 
-                // 1. Ghi thông tin ván chơi vào play_rounds
                 insertPlayRound(conn, completed, contentHash);
 
-                // 2. Ghi kết quả từng người chơi và các lá bài
                 insertPlayerResultsAndCards(conn, completed, currentBalances);
 
-                // 3. Ghi lịch sử đặt cược
                 insertBetHistory(conn, result);
 
-                // 4. Ghi các side pot nếu có
                 insertSidePots(conn, result);
 
                 conn.commit();
@@ -187,7 +164,6 @@ public final class JdbcGameBUS implements GameBUS {
 
             Hand evaluatedHand = evaluator.evaluate(privateHand.cards());
 
-            // Lưu kết quả người chơi
             String insertResultSql = "INSERT INTO play_results "
                     + "(round_id, user_id, display_name, placement, outcome, profit, hand_type, score) "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -202,7 +178,6 @@ public final class JdbcGameBUS implements GameBUS {
                     evaluatedHand.score()
             );
 
-            // Lưu từng lá bài
             String insertCardSql = "INSERT INTO play_cards (round_id, user_id, position_no, rank_name, suit_name) "
                     + "VALUES (?, ?, ?, ?, ?)";
             for (int i = 0; i < privateHand.cards().size(); i++) {
@@ -216,7 +191,6 @@ public final class JdbcGameBUS implements GameBUS {
                 );
             }
 
-            // Nếu ván kết thúc bình thường (không bị hủy), cập nhật số dư và lịch sử giao dịch
             if ("FINISHED".equals(r.roundStatus())) {
                 BigDecimal balanceBefore = balances.get(p.userId());
                 BigDecimal balanceAfter = balanceBefore.add(p.profit());
@@ -224,7 +198,6 @@ public final class JdbcGameBUS implements GameBUS {
                     throw new SQLException("Số dư người chơi không đủ để chốt ván: " + p.userId());
                 }
 
-                // Ghi nhận vào sổ cái (ledger)
                 String insertLedgerSql = "INSERT INTO play_ledger "
                         + "(round_id, user_id, delta, balance_before, balance_after) "
                         + "VALUES (?, ?, ?, ?, ?)";
@@ -236,7 +209,6 @@ public final class JdbcGameBUS implements GameBUS {
                         balanceAfter
                 );
 
-                // Cập nhật điểm và thống kê số trận thắng/thua của người dùng
                 int winDelta = "WIN".equals(p.result()) ? 1 : 0;
                 int lossDelta = Set.of("LOSE", "FOLD").contains(p.result()) ? 1 : 0;
                 String updateUserSql = "UPDATE users SET "

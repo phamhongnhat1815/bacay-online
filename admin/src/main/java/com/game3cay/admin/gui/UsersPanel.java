@@ -32,11 +32,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
-/**
- * Tab Quản Lý Người Chơi: Tìm kiếm, khóa/mở khóa tài khoản, điều chỉnh số dư điểm.
- */
 public final class UsersPanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -83,7 +79,6 @@ public final class UsersPanel extends JPanel {
         setBackground(AdminTheme.BG);
         setBorder(new EmptyBorder(24, 28, 24, 28));
 
-        // Top Toolbar
         JPanel topToolbar = AdminTheme.transparent(new BorderLayout());
 
         JPanel searchBar = AdminTheme.transparent(new FlowLayout(FlowLayout.LEFT, 10, 0));
@@ -108,7 +103,6 @@ public final class UsersPanel extends JPanel {
         topToolbar.add(actionButtons, BorderLayout.EAST);
         add(topToolbar, BorderLayout.NORTH);
 
-        // Center Table
         userTable.setFont(AdminTheme.font(13, false));
         userTable.setRowHeight(36);
         userTable.setBackground(AdminTheme.PANEL);
@@ -153,7 +147,6 @@ public final class UsersPanel extends JPanel {
         scrollPane.setBorder(BorderFactory.createLineBorder(AdminTheme.BORDER));
         add(scrollPane, BorderLayout.CENTER);
 
-        // Bottom Pagination
         JPanel bottomBar = AdminTheme.transparent(new BorderLayout());
         bottomBar.add(pageStatusLabel, BorderLayout.WEST);
 
@@ -164,7 +157,6 @@ public final class UsersPanel extends JPanel {
         bottomBar.add(pageNav, BorderLayout.EAST);
         add(bottomBar, BorderLayout.SOUTH);
 
-        // Events
         searchButton.addActionListener(e -> executeSearch(0));
         searchField.addActionListener(e -> executeSearch(0));
         statusFilterCombo.addActionListener(e -> executeSearch(0));

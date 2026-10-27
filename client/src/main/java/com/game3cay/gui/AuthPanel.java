@@ -18,14 +18,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
 
-/**
- * Màn hình Đăng nhập / Đăng ký tài khoản người chơi.
- * <p>
- * Hỗ trợ chuyển đổi linh hoạt giữa hai chế độ Đăng nhập và Đăng ký,
- * tự động kiểm tra định dạng và hiển thị thông báo lỗi trực quan.
- */
 public final class AuthPanel extends JPanel {
-
     private final JTextField username = new JTextField();
     private final JTextField name = new JTextField();
     private final JTextField email = new JTextField();
@@ -50,7 +43,6 @@ public final class AuthPanel extends JPanel {
 
         formContainer.setBorder(new EmptyBorder(28, 32, 26, 32));
 
-        // Tab chuyển đổi Đăng nhập / Đăng ký
         var tabsPanel = Theme.transparent(new GridLayout(1, 2, 10, 0));
         tabsPanel.add(loginTab);
         tabsPanel.add(registerTab);
@@ -60,12 +52,10 @@ public final class AuthPanel extends JPanel {
         topHeader.add(captionLabel, BorderLayout.CENTER);
         formContainer.add(topHeader, BorderLayout.NORTH);
 
-        // Các ô nhập liệu cơ bản (Tài khoản & Mật khẩu)
         var basicFields = Theme.transparent(new GridLayout(0, 1, 0, 12));
         basicFields.add(createFieldRow("TÀI KHOẢN", username));
         basicFields.add(createFieldRow("MẬT KHẨU", password));
 
-        // Các ô bổ sung cho chế độ Đăng ký
         extraFieldsPanel.add(createFieldRow("NHẬP LẠI MẬT KHẨU", confirm));
         var optionalFields = Theme.transparent(new GridLayout(1, 2, 12, 0));
         optionalFields.add(createFieldRow("TÊN HIỂN THỊ · TÙY CHỌN", name));
@@ -82,7 +72,6 @@ public final class AuthPanel extends JPanel {
         basicFields.setPreferredSize(new Dimension(360, 144));
         formContainer.add(middlePanel, BorderLayout.CENTER);
 
-        // Khu vực thông báo lỗi và nút Submit
         messageArea.setEditable(false);
         messageArea.setFocusable(false);
         messageArea.setLineWrap(true);
@@ -154,12 +143,10 @@ public final class AuthPanel extends JPanel {
         Graphics2D g = (Graphics2D) gg.create();
         Assets.quality(g);
 
-        // Vẽ nền phòng casino
         Assets.cover(g, Assets.get("backgrounds/auth.png", 1700), getWidth(), getHeight());
         g.setColor(new Color(4, 10, 22, 90));
         g.fillRect(0, 0, getWidth(), getHeight());
 
-        // Banner chữ và 3 lá bài trang trí bên trái màn hình lớn
         if (getWidth() >= 1050) {
             int startX = 85;
             int startY = Math.max(115, getHeight() / 2 - 190);

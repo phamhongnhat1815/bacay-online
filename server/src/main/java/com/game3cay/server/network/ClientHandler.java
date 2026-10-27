@@ -55,19 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Xử lý phiên kết nối mạng TCP của một Client kết nối tới Server.
- * <p>
- * Mỗi kết nối có:
- * <ul>
- *   <li>1 luồng nhận dữ liệu đọc từ socket (trong phương thức {@link #run()}).</li>
- *   <li>1 luồng đơn gửi dữ liệu chuyên biệt ({@code sender}) với hàng đợi tối đa 128 gói tin.</li>
- *   <li>1 bộ hẹn giờ nhịp tim định kỳ ({@code heartbeat}) kiểm tra tình trạng kết nối.</li>
- *   <li>Bộ đệm LRU phản hồi (128 mục) hỗ trợ Request-Response và kiểm tra lặp.</li>
- * </ul>
- */
 public final class ClientHandler implements Runnable {
-
     private static final int HEARTBEAT_INTERVAL = RuntimeSettings.integer(
             "server.properties", "heartbeat.intervalSeconds", 5, 1, 60);
 
@@ -128,14 +116,13 @@ public final class ClientHandler implements Runnable {
     @Override
     public void run() {
         try (socket) {
-            // Đặt timeout 5s để khởi tạo bắt tay luồng Object
             socket.setSoTimeout(5000);
 
             output = new ObjectOutputStream(socket.getOutputStream());
             output.flush();
 
             ObjectInputStream input = PacketIO.openInput(socket);
-            socket.setSoTimeout(0); // Chuyển sang chế độ không timeout (heartbeat quản lý)
+            socket.setSoTimeout(0);
 
             lastPong.set(System.nanoTime());
             send(new Packet(PacketType.SERVER_NOTICE, null, "Đã kết nối máy chủ Ba Cây, giao thức v" + Packet.VERSION));
@@ -146,7 +133,6 @@ public final class ClientHandler implements Runnable {
                 handlePacket(PacketIO.read(input));
             }
         } catch (IOException | ClassNotFoundException | RuntimeException e) {
-            // Kết thúc phiên hoặc ngắt kết nối
         } finally {
             close();
             clearSession();
@@ -495,11 +481,6 @@ public final class ClientHandler implements Runnable {
         return new BUSException(code, message);
     }
 
-    /**
-     * Đưa gói tin vào hàng đợi gửi dữ liệu cho client.
-     *
-     * @param packet gói tin cần gửi
-     */
     public void send(Packet packet) {
         if (packet.getRequestId() != null && packet.getType() != PacketType.PING) {
             replies.put(packet.getRequestId(), packet);
@@ -525,9 +506,6 @@ public final class ClientHandler implements Runnable {
         }
     }
 
-    /**
-     * Đóng kết nối an toàn và giải phóng tài nguyên luồng.
-     */
     public void close() {
         if (!closed.compareAndSet(false, true)) {
             return;
@@ -536,7 +514,6 @@ public final class ClientHandler implements Runnable {
         try {
             socket.close();
         } catch (IOException ignored) {
-            // Bỏ qua ngoại lệ đóng socket
         }
 
         heartbeat.shutdownNow();

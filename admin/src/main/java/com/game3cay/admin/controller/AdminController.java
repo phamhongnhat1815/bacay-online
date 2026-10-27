@@ -29,11 +29,7 @@ import java.util.concurrent.TimeUnit;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
-/**
- * Controller điều phối toàn bộ luồng mạng TCP và tương tác giao diện người dùng Admin trên luồng Swing EDT.
- */
 public final class AdminController {
-
     private final AdminMainFrame frame;
     private AdminSocketClient client;
     private ScheduledExecutorService poller;
@@ -139,10 +135,7 @@ public final class AdminController {
     }
 
     private void onServerPush(Packet packet) {
-        // Có thể mở rộng để nhận sự kiện real-time
     }
-
-    // --- Dashboard & Broadcast ---
 
     public void loadDashboardStats() {
         if (client == null || !client.isConnected()) return;
@@ -173,8 +166,6 @@ public final class AdminController {
             return null;
         });
     }
-
-    // --- Users Management ---
 
     public void loadUsersPage(AdminUserFilterRequest req) {
         if (client == null || !client.isConnected()) return;
@@ -229,8 +220,6 @@ public final class AdminController {
             return null;
         });
     }
-
-    // --- Rooms Monitor ---
 
     public void loadRoomsMonitor() {
         if (client == null || !client.isConnected()) return;
@@ -325,8 +314,6 @@ public final class AdminController {
         }
     }
 
-    // --- Ledger Audit ---
-
     public void loadLedgerPage(int page) {
         if (client == null || !client.isConnected()) return;
 
@@ -341,8 +328,6 @@ public final class AdminController {
             return null;
         });
     }
-
-    // --- Auto Poller ---
 
     private void startAutoPoller() {
         stopAutoPoller();

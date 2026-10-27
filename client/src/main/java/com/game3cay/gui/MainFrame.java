@@ -34,12 +34,7 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-/**
- * MainFrame serves as the primary top-level window for the Ba Cay Online game client,
- * managing the screen transitions between authentication, lobby, and room tables.
- */
 public final class MainFrame extends JFrame {
-
     @Serial
     private static final long serialVersionUID = 1L;
 

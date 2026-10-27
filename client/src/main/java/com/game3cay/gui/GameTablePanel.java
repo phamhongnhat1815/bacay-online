@@ -28,14 +28,7 @@ import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
-/**
- * GameTablePanel renders the graphical representation of the oval poker table,
- * dealer avatar, center pot display, up to 8 player seats, turn timers, and card reveals.
- * <p>
- * Notice: This client never derives opponent cards before the server showdown.
- */
 public final class GameTablePanel extends JPanel {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -97,9 +90,6 @@ public final class GameTablePanel extends JPanel {
         setPreferredSize(new Dimension(BASE_WIDTH, BASE_HEIGHT));
     }
 
-    /**
-     * Places the waiting overlay component in the center of the table.
-     */
     public void setWaitingOverlay(JComponent overlay) {
         if (waitingOverlay != null) {
             remove(waitingOverlay);
@@ -240,7 +230,6 @@ public final class GameTablePanel extends JPanel {
         g.translate((getWidth() - BASE_WIDTH * scale) / 2, (getHeight() - BASE_HEIGHT * scale) / 2);
         g.scale(scale, scale);
 
-        // Table drop shadow and background
         g.setColor(new Color(0, 0, 0, 55));
         g.fillOval(98, 154, 910, 460);
         g.drawImage(Assets.get("dealer.png", 220), 472, 2, 156, 230, null);
@@ -253,7 +242,6 @@ public final class GameTablePanel extends JPanel {
 
         drawCenter(g);
 
-        // Hiệu ứng gom chip / Pot bay về ghế người thắng
         long now = System.nanoTime();
         boolean anyFlying = false;
         for (FlyingChip chip : flyingChips) {
@@ -460,15 +448,12 @@ public final class GameTablePanel extends JPanel {
         }
 
         if (turn) {
-            // Thanh nền rãnh đếm ngược
             g.setColor(new Color(10, 20, 35, 200));
             g.fillRoundRect(left + 14, top + h - 6, w - 28, 4, 3, 3);
-            // Thanh tiến trình vàng / đỏ
+
             g.setColor(isUrgent ? Theme.RED : Theme.GOLD);
             g.fillRoundRect(left + 14, top + h - 6, (int) ((w - 28) * fraction), 4, 3, 3);
         }
-
-
 
         g.setStroke(new BasicStroke(1.0f));
     }
@@ -504,7 +489,7 @@ public final class GameTablePanel extends JPanel {
         int cx = (int) (550 + 306 * Math.cos(angle));
         int cy = (int) (365 + 145 * Math.sin(angle));
         if (self) {
-            cy -= 18; // Nhac 3 la bai cua ban than len mot chut de tranh de len khung ghe
+            cy -= 18;
         }
         int left = cx - (cw + 2 * step) / 2;
         int top = cy - ch / 2;

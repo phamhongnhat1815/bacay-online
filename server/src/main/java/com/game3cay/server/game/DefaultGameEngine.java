@@ -26,14 +26,7 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Cài đặt mặc định của {@link GameEngine} cho trò chơi Ba Cây.
- * <p>
- * Thuần túy tính toán logic trò chơi trong bộ nhớ, không phụ thuộc vào Socket, UI hay JDBC.
- * Tất cả đồng bộ hóa truy cập của từng ván được bảo đảm bởi RoomManager.
- */
 public final class DefaultGameEngine implements GameEngine {
-
     private static final BigDecimal ZERO = new BigDecimal("0.00");
     private final Map<String, Round> rounds = new ConcurrentHashMap<>();
     private final Random random;
@@ -47,9 +40,6 @@ public final class DefaultGameEngine implements GameEngine {
         this.random = Objects.requireNonNull(random, "random không được null");
     }
 
-    /**
-     * Trạng thái nội bộ của một người chơi trong ván bài.
-     */
     private static final class Player {
         final RoundParticipant info;
         final List<Card> cards;
@@ -71,9 +61,6 @@ public final class DefaultGameEngine implements GameEngine {
         }
     }
 
-    /**
-     * Trạng thái nội bộ của một ván bài đang diễn ra.
-     */
     private static final class Round {
         final String id;
         final List<Player> players = new ArrayList<>();
@@ -123,7 +110,6 @@ public final class DefaultGameEngine implements GameEngine {
             }
         }
 
-        // Tạo bộ bài 52 lá và xáo trộn ngẫu nhiên
         List<Card> deck = new ArrayList<>(52);
         for (Suit suit : Suit.values()) {
             for (Rank rank : Rank.values()) {
@@ -144,7 +130,6 @@ public final class DefaultGameEngine implements GameEngine {
             }
         }
 
-        // Người chia bài (vị trí đầu tiên) chia xong, lượt tố đầu tiên thuộc về người kế tiếp
         chooseNextTurn(round, 0);
 
         if (rounds.putIfAbsent(roundId, round) != null) {
@@ -213,7 +198,6 @@ public final class DefaultGameEngine implements GameEngine {
 
         switch (action) {
             case FOLD -> {
-                // Không đóng góp thêm điểm
             }
             case CALL -> {
                 BigDecimal needed = round.highBet.subtract(player.bet);
@@ -261,7 +245,6 @@ public final class DefaultGameEngine implements GameEngine {
     }
 
     private void advanceTurn(Round round, int previousPlayerIndex) {
-        // Loại bỏ những người chơi không còn khả năng hành động
         round.pending.removeIf(id -> round.players.stream()
                 .noneMatch(p -> p.info.userId() == id && p.canAct()));
 
@@ -304,7 +287,6 @@ public final class DefaultGameEngine implements GameEngine {
 
         long connectedPlayers = round.players.stream().filter(p -> !p.left).count();
         if (connectedPlayers < 2) {
-            // Không còn đủ 2 người chơi kết nối để duy trì ván bài -> hủy ván, hoàn điểm
             finishRound(round, true);
         } else if (Objects.equals(round.turnUserId, userId)) {
             advanceTurn(round, round.players.indexOf(player));
@@ -377,7 +359,6 @@ public final class DefaultGameEngine implements GameEngine {
                 List<Player> potWinners;
 
                 if (pot.eligiblePlayerIds().isEmpty()) {
-                    // Không có ai đủ điều kiện tranh pot này -> hoàn trả lại cho những người đã góp đến mức này
                     BigDecimal currentLevel = betLevels.get(i);
                     potWinners = round.players.stream()
                             .filter(p -> p.bet.compareTo(currentLevel) >= 0)
@@ -439,7 +420,6 @@ public final class DefaultGameEngine implements GameEngine {
                 outcome = "DRAW";
             }
 
-            // Chỉ lật bài khi ván không bị hủy, có showdown (từ 2 người chưa úp bài) và bản thân không úp bài
             var handToReveal = (!cancelled && hasShowdown && !p.folded) ? evaluator.evaluate(p.cards) : null;
 
             playerResults.add(new PlayerResult(

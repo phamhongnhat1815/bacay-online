@@ -22,20 +22,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Quản lý kết nối TCP Socket phía Client tới Game Server.
- * <p>
- * Tính năng chính:
- * <ul>
- *   <li>Thao tác kết nối và gửi dữ liệu bất đồng bộ hoàn toàn, không làm đơ giao diện Swing (EDT).</li>
- *   <li>Luồng gửi tuần tự đơn lẻ ({@code sender}) với hàng đợi tối đa 32 gói tin.</li>
- *   <li>Luồng nền nhận dữ liệu ({@code client-reader}) liên tục đọc gói tin từ server.</li>
- *   <li>Tự động phản hồi gói tin {@code PING} bằng {@code PONG}.</li>
- *   <li>Watchdog kiểm tra phản hồi nhịp tim từ Server quá 15 giây.</li>
- * </ul>
- */
 public final class SocketClient {
-
     private static final int CONNECT_TIMEOUT_MS = RuntimeSettings.integer(
             "client.properties", "connection.timeoutMs", 5000, 100, 60000);
 
@@ -73,12 +60,6 @@ public final class SocketClient {
         this.listener = Objects.requireNonNull(listener, "listener không được null");
     }
 
-    /**
-     * Bắt đầu kết nối bất đồng bộ tới Server.
-     *
-     * @param host địa chỉ máy chủ
-     * @param port cổng TCP máy chủ
-     */
     public void connect(String host, int port) {
         if (!started.compareAndSet(false, true)) {
             throw new IllegalStateException("Mỗi đối tượng SocketClient chỉ được sử dụng cho một phiên kết nối duy nhất.");
@@ -95,16 +76,13 @@ public final class SocketClient {
         try {
             socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
 
-            // Giới hạn thời gian chờ bắt tay luồng Object
             socket.setSoTimeout(HEADER_TIMEOUT_MS);
 
-            // Hai phía đều tạo output và flush trước khi mở input để tránh deadlock luồng
             output = new ObjectOutputStream(socket.getOutputStream());
             output.flush();
 
             ObjectInputStream input = PacketIO.openInput(socket);
 
-            // Sau khi bắt tay thành công, chuyển sang không timeout (do heartbeat giám sát)
             socket.setSoTimeout(0);
 
             lastReceivedNanos = System.nanoTime();
@@ -130,12 +108,6 @@ public final class SocketClient {
         }
     }
 
-    /**
-     * Đưa gói tin vào hàng đợi gửi đi.
-     *
-     * @param packet gói tin cần gửi
-     * @return true nếu đã xếp hàng thành công, false nếu kết nối đã đóng hoặc hàng đợi đầy
-     */
     public boolean send(Packet packet) {
         if (!isConnected()) {
             return false;
@@ -165,7 +137,6 @@ public final class SocketClient {
                 lastReceivedNanos = System.nanoTime();
 
                 if (packet.getType() == PacketType.PING) {
-                    // Tự động trả lời PONG ngay lập tức
                     if (!send(new Packet(PacketType.PONG, packet.getRequestId(), packet.getData()))) {
                         close("Không thể đưa phản hồi PONG vào hàng đợi.");
                         return;
@@ -211,7 +182,6 @@ public final class SocketClient {
         try {
             socket.close();
         } catch (IOException ignored) {
-            // Bỏ qua lỗi đóng socket
         } finally {
             heartbeat.shutdownNow();
             sender.shutdownNow();

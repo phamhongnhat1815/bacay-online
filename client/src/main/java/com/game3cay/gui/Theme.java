@@ -20,11 +20,7 @@ import java.awt.RenderingHints;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 
-/**
- * Hệ thống giao diện chuẩn (Theme & Styling) phong cách Royal Navy & Gold cho Ba Cây Online.
- */
 public final class Theme {
-
     public static final Color BG = new Color(8, 16, 28);
     public static final Color PANEL = new Color(12, 22, 38);
     public static final Color GOLD = new Color(230, 190, 105);
@@ -35,16 +31,10 @@ public final class Theme {
 
     private Theme() {}
 
-    /**
-     * Tạo Font chữ SansSerif với kích thước và độ đậm quy định.
-     */
     public static Font font(float size, boolean isBold) {
         return new Font("SansSerif", isBold ? Font.BOLD : Font.PLAIN, Math.round(size));
     }
 
-    /**
-     * Định dạng số điểm sang chuỗi hiển thị có dấu phân cách hàng nghìn.
-     */
     public static String points(BigDecimal amount) {
         if (amount == null) {
             return "0";
@@ -52,9 +42,6 @@ public final class Theme {
         return new DecimalFormat("#,##0.##").format(amount);
     }
 
-    /**
-     * Tạo JLabel vô hiệu hóa mã HTML injection, giữ văn bản an toàn.
-     */
     public static JLabel label(String text, int fontSize, Color color) {
         JLabel label = new JLabel(text);
         label.setFont(font(fontSize, false));
@@ -63,18 +50,12 @@ public final class Theme {
         return label;
     }
 
-    /**
-     * Tạo JPanel trong suốt (transparent panel) với bố cục quy định.
-     */
     public static JPanel transparent(LayoutManager layout) {
         JPanel panel = new JPanel(layout);
         panel.setOpaque(false);
         return panel;
     }
 
-    /**
-     * Định dạng giao diện ô nhập liệu JTextField (màu nền navy, viền mảnh, chữ vàng/trắng).
-     */
     public static void field(JTextField field) {
         field.setFont(font(15, false));
         field.setForeground(TEXT);
@@ -89,9 +70,6 @@ public final class Theme {
         field.setPreferredSize(new Dimension(220, 42));
     }
 
-    /**
-     * Cài đặt các thuộc tính giao diện mặc định cho toàn bộ UIManager của Swing.
-     */
     public static void install() {
         UIManager.put(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         UIManager.put("OptionPane.background", PANEL);
@@ -106,9 +84,6 @@ public final class Theme {
         UIManager.put("ScrollBar.width", 10);
     }
 
-    /**
-     * Nút bấm tùy chỉnh phong cách hoàng gia với các biến thể (gold, red, plain).
-     */
     public static class Button extends JButton {
         private final String colorVariant;
 
@@ -182,9 +157,6 @@ public final class Theme {
         }
     }
 
-    /**
-     * Bảng nền hiệu ứng thủy tinh trong mờ (Glass Panel) với viền vàng kim bo góc.
-     */
     public static class Glass extends JPanel {
         public Glass(LayoutManager layout) {
             super(layout);

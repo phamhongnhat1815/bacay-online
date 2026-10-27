@@ -9,14 +9,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.prefs.Preferences;
 
-/**
- * Quản lý và phát hiệu ứng âm thanh trong game (tiếng chia bài, thắng/thua, nút bấm, đến lượt).
- * <p>
- * Lưu cài đặt bật/tắt âm thanh vào {@link Preferences} người dùng máy tính.
- * Luồng phát âm thanh riêng biệt không gây chặn luồng giao diện người dùng.
- */
 public final class Sound {
-
     private static final Preferences PREFERENCES = Preferences.userNodeForPackage(Sound.class);
     private static volatile boolean isAudioEnabled = PREFERENCES.getBoolean("sound", true);
 
@@ -28,24 +21,15 @@ public final class Sound {
 
     private Sound() {}
 
-    /**
-     * Kiểm tra âm thanh đang bật hay tắt.
-     */
     public static boolean enabled() {
         return isAudioEnabled;
     }
 
-    /**
-     * Bật hoặc tắt âm thanh và lưu vào Preferences.
-     */
     public static void toggle() {
         isAudioEnabled = !isAudioEnabled;
         PREFERENCES.putBoolean("sound", isAudioEnabled);
     }
 
-    /**
-     * Phát âm thanh tích tắc cảnh báo khẩn cấp khi lượt chơi còn dưới 5 giây.
-     */
     public static void playUrgentBeep() {
         if (!isAudioEnabled) {
             return;
@@ -53,9 +37,6 @@ public final class Sound {
         playSynthesizedTone(920, 70, 0.45);
     }
 
-    /**
-     * Phát tiếng gõ chip cược khi bấm chọn mức cược nhanh.
-     */
     public static void playChip() {
         if (!isAudioEnabled) {
             return;
@@ -63,10 +44,6 @@ public final class Sound {
         playSynthesizedTone(1500, 40, 0.35);
     }
 
-    /**
-     * Phát âm thanh va đập của cọc chip nhựa realtime khi có người chơi Tố / Tất tay / Theo cược.
-     * Tạo cảm giác như các cọc chip đang va đập cơ học lên mặt bàn nỉ trong sòng bài thật.
-     */
     public static void playChipRattle() {
         if (!isAudioEnabled) {
             return;
@@ -79,20 +56,18 @@ public final class Sound {
                 byte[] buffer = new byte[samples * 2];
 
                 int hit1 = 0;
-                int hit2 = (int) (sampleRate * 0.016f); // 16ms
-                int hit3 = (int) (sampleRate * 0.038f); // 38ms
+                int hit2 = (int) (sampleRate * 0.016f);
+                int hit3 = (int) (sampleRate * 0.038f);
 
                 for (int i = 0; i < samples; i++) {
                     double sampleVal = 0.0;
 
-                    // Cú chạm 1: Đanh, cao tần (2200 Hz)
                     if (i >= hit1 && i < hit1 + 800) {
                         double t = (double) (i - hit1) / sampleRate;
                         double decay = Math.exp(-t * 220.0);
                         sampleVal += Math.sin(2.0 * Math.PI * 2200.0 * t) * 0.45 * decay;
                     }
 
-                    // Cú chạm 2: Cọc chip đập thứ hai (1450 Hz + âm bội 2900 Hz)
                     if (i >= hit2 && i < hit2 + 1200) {
                         double t = (double) (i - hit2) / sampleRate;
                         double decay = Math.exp(-t * 160.0);
@@ -100,7 +75,6 @@ public final class Sound {
                                     + Math.sin(2.0 * Math.PI * 2900.0 * t) * 0.15) * decay;
                     }
 
-                    // Cú chạm 3: Dội nhẹ xuống nỉ bàn (1050 Hz)
                     if (i >= hit3 && i < hit3 + 1400) {
                         double t = (double) (i - hit3) / sampleRate;
                         double decay = Math.exp(-t * 120.0);
@@ -128,9 +102,6 @@ public final class Sound {
         });
     }
 
-    /**
-     * Phát âm thanh sột soạt khi kéo hé nặn lá bài.
-     */
     public static void playCardFlip() {
         if (!isAudioEnabled) {
             return;
@@ -138,9 +109,6 @@ public final class Sound {
         playSynthesizedTone(650, 45, 0.28);
     }
 
-    /**
-     * Phát âm thanh pop vui tai khi thả emote.
-     */
     public static void playEmotePop() {
         if (!isAudioEnabled) {
             return;
@@ -148,9 +116,6 @@ public final class Sound {
         playSynthesizedTone(780, 55, 0.35);
     }
 
-    /**
-     * Phát âm thanh chuông chiến thắng gom pot.
-     */
     public static void playPotWin() {
         if (!isAudioEnabled) {
             return;
@@ -221,11 +186,6 @@ public final class Sound {
         });
     }
 
-    /**
-     * Phát hiệu ứng âm thanh theo tên tệp (không cần phần mở rộng .wav).
-     *
-     * @param soundName tên tệp trong thư mục /assets/sounds/
-     */
     public static void play(String soundName) {
         if (!isAudioEnabled) {
             return;
@@ -247,7 +207,6 @@ public final class Sound {
                 clip.open(audioStream);
                 clip.start();
             } catch (Exception ignored) {
-                // Âm thanh là tính năng tùy chọn (không ảnh hưởng nếu máy không có card âm thanh)
             }
         });
     }

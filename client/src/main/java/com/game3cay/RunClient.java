@@ -7,19 +7,8 @@ import com.game3cay.gui.Theme;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
-/**
- * Điểm khởi chạy ứng dụng Client của game Ba Cây Online.
- * <p>
- * Nhận tham số dòng lệnh tùy chọn:
- * <ul>
- *   <li>{@code args[0]}: Địa chỉ IP / Host của máy chủ (mặc định đọc từ cấu hình).</li>
- *   <li>{@code args[1]}: Cổng TCP của máy chủ (1–65535, mặc định 8888).</li>
- * </ul>
- */
 public final class RunClient {
-
     public static void main(String[] args) {
-        // Bật khử răng cưa chữ (Anti-aliasing) trên màn hình độ phân giải cao
         System.setProperty("swing.aatext", "true");
         System.setProperty("awt.useSystemAAFontSettings", "on");
 
@@ -45,7 +34,6 @@ public final class RunClient {
             }
         }
 
-        // Khởi động giao diện người dùng trên luồng Event Dispatch Thread (EDT)
         SwingUtilities.invokeLater(() -> {
             Theme.install();
             MainFrame view = new MainFrame();

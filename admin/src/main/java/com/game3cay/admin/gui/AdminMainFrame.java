@@ -15,11 +15,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-/**
- * Cửa sổ chính điều khiển bảng quản trị Admin của hệ thống Ba Cây Online.
- */
 public final class AdminMainFrame extends JFrame {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -51,7 +47,6 @@ public final class AdminMainFrame extends JFrame {
         super("Ba Cây Online — Bảng Quản Trị Hệ Thống");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
-        // Header
         JPanel header = new JPanel(new BorderLayout(16, 0));
         header.setBackground(new Color(8, 18, 32));
         header.setBorder(BorderFactory.createCompoundBorder(
@@ -77,13 +72,11 @@ public final class AdminMainFrame extends JFrame {
         rightBar.add(logoutButton);
         header.add(rightBar, BorderLayout.EAST);
 
-        // Tabs Container
         tabsContainer.add(dashboardPanel, "DASHBOARD");
         tabsContainer.add(usersPanel, "USERS");
         tabsContainer.add(roomsPanel, "ROOMS");
         tabsContainer.add(ledgerPanel, "LEDGER");
 
-        // Console Screen
         JPanel consoleScreen = new JPanel(new BorderLayout());
         consoleScreen.setBackground(AdminTheme.BG);
         consoleScreen.add(header, BorderLayout.NORTH);
@@ -95,7 +88,6 @@ public final class AdminMainFrame extends JFrame {
         footer.add(AdminTheme.label("BA CÂY ADMIN v2.0", 11, AdminTheme.MUTED), BorderLayout.EAST);
         consoleScreen.add(footer, BorderLayout.SOUTH);
 
-        // Root
         rootPanel.add(authPanel, "AUTH");
         rootPanel.add(consoleScreen, "CONSOLE");
         setContentPane(rootPanel);
@@ -105,7 +97,6 @@ public final class AdminMainFrame extends JFrame {
         setSize(Math.min(1360, screen.width - 40), Math.min(840, screen.height - 40));
         setLocationRelativeTo(null);
 
-        // Nav events
         navDashboard.addActionListener(e -> selectTab("DASHBOARD", navDashboard));
         navUsers.addActionListener(e -> selectTab("USERS", navUsers));
         navRooms.addActionListener(e -> selectTab("ROOMS", navRooms));

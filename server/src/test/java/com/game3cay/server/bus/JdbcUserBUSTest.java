@@ -160,7 +160,7 @@ class JdbcUserBUSTest {
     assertEquals(20, rooms.listRooms().size());
     assertEquals(0, rooms.listRooms().getFirst().playerCount());
     assertEquals(2, rooms.listRooms().get(1).playerCount());
-    // Account persists independently of temporary room/session membership.
+
     assertEquals(players[0].userId(), bus.authenticate("player_0", "password123").userId());
   }
 

@@ -5,7 +5,6 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** Chỉ dùng bên server/journal/DB; không gửi payload này cho client. */
 public record CompletedRound(
     RoundResult result, long roomId, String roomName, BigDecimal ante, List<PrivateHand> hands)
     implements Serializable {

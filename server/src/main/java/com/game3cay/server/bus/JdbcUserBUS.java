@@ -16,14 +16,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/**
- * Cài đặt {@link UserBUS} sử dụng JDBC và MySQL.
- * <p>
- * Đảm nhận kiểm tra hợp lệ dữ liệu đầu vào (Validation) trước khi truy cập CSDL,
- * băm mật khẩu bằng PBKDF2 và phân loại lỗi SQL thành {@link BUSException}.
- */
 public final class JdbcUserBUS implements UserBUS {
-
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]{3,50}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
@@ -76,7 +69,6 @@ public final class JdbcUserBUS implements UserBUS {
             String passwordHash = PasswordUtil.hash(rawPassword);
             return users.insert(normalizedUsername, passwordHash, name, mail);
         } catch (SQLException e) {
-            // MySQL error 1062 hoặc SQLState 23505 (Unique violation)
             if (e.getErrorCode() == 1062 || "23505".equals(e.getSQLState())) {
                 try {
                     if (users.findByUsername(normalizedUsername) != null) {

@@ -37,20 +37,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Controller chính điều phối tương tác giữa Giao diện người dùng (Swing EDT)
- * và Tầng mạng Socket (SocketClient).
- * <p>
- * Đảm bảo:
- * <ul>
- *   <li>Tất cả các thay đổi giao diện luôn diễn ra trên Event Dispatch Thread (EDT).</li>
- *   <li>Quản lý trạng thái đang chờ phản hồi (pending request) và timeout 12 giây.</li>
- *   <li>Tự động định kỳ đồng bộ danh sách phòng và số dư người chơi.</li>
- *   <li>Bảo mật: mật khẩu trong mảng char[] được xóa sạch (zero-out) ngay sau khi sử dụng.</li>
- * </ul>
- */
 public final class ConnectionController implements PacketListener {
-
     private final MainFrame view;
     private final Timer requestTimeoutTimer;
     private final Timer maintenanceTimer;
@@ -72,7 +59,6 @@ public final class ConnectionController implements PacketListener {
     private DataDialog dataDialog;
     private final List<RoomChatEvent> pendingRoomChatEvents = new ArrayList<>();
 
-    // Quản lý Tự động kết nối lại (Smart Auto-Reconnect)
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
     private final Timer reconnectTimer;
     private String savedUsername;
@@ -254,7 +240,6 @@ public final class ConnectionController implements PacketListener {
             updateUiOperationState();
             requestTimeoutTimer.restart();
 
-            // Nếu máy chủ thay đổi so với lần kết nối trước
             if (client != null && (!view.getHost().equals(connectedHost) || view.getPort() != connectedPort)) {
                 SocketClient oldClient = client;
                 client = null;
@@ -417,13 +402,11 @@ public final class ConnectionController implements PacketListener {
             }
 
             if (isReconnecting) {
-                // Đang trong tiến trình reconnect, lên lịch thử lại lần kế tiếp sau 1.5 giây
                 reconnectTimer.setInitialDelay(1500);
                 reconnectTimer.restart();
                 return;
             }
 
-            // Mất kết nối đột ngột: Kích hoạt Tự động kết nối lại (Smart Auto-Reconnect)
             if (currentUser != null && savedPassword != null) {
                 startAutoReconnect();
             } else {
@@ -485,7 +468,6 @@ public final class ConnectionController implements PacketListener {
             return;
         }
 
-        // 1. Xử lý các gói tin Server Push (không có requestId phản hồi)
         if (requestId == null) {
             if (currentUser == null) {
                 return;
@@ -564,7 +546,6 @@ public final class ConnectionController implements PacketListener {
             return;
         }
 
-        // 2. Xử lý gói tin phản hồi cho Request hiện tại
         if (pendingRequest == null || !pendingRequest.id().equals(requestId)) {
             return;
         }

@@ -21,15 +21,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-/**
- * Quản lý độ bền vững dữ liệu kết quả ván bài (Write-Ahead Journal / Pending Queue).
- * <p>
- * Trước khi công bố kết quả cho client, kết quả được lưu vào đĩa cục bộ (.round file).
- * Một luồng nền định kỳ thử ghi vào CSDL MySQL. Khi server khởi động lại, các ván chưa lưu
- * xong sẽ được tự động nạp lại và tiếp tục ghi vào CSDL, đảm bảo không bao giờ mất điểm của người chơi.
- */
 public final class ResultPersistence implements AutoCloseable {
-
     private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F-]{36}$");
     private static final String JOURNAL_FILTER =
             "maxdepth=24;maxarray=1024;maxbytes=1000000;"
@@ -53,7 +45,6 @@ public final class ResultPersistence implements AutoCloseable {
 
         Files.createDirectories(directory);
 
-        // Nạp các ván đang chờ từ đĩa khi khởi động
         try (var files = Files.list(directory)) {
             List<Path> roundFiles = files.filter(p -> p.getFileName().toString().endsWith(".round")).toList();
             for (Path file : roundFiles) {
@@ -67,27 +58,14 @@ public final class ResultPersistence implements AutoCloseable {
             }
         }
 
-        // Định kỳ 3 giây thử lưu lại các ván đang chờ
         worker.scheduleWithFixedDelay(this::retryPendingResults, 0, 3, TimeUnit.SECONDS);
     }
 
-    /**
-     * Kiểm tra xem người chơi có ván nào đang chờ lưu CSDL không.
-     *
-     * @param userId mã người chơi
-     * @return true nếu người chơi đang có kết quả chờ ghi
-     */
     public synchronized boolean pendingFor(long userId) {
         return pending.values().stream()
                 .anyMatch(r -> r.result().playerResults().stream().anyMatch(p -> p.userId() == userId));
     }
 
-    /**
-     * Ghi một ván bài vào hàng đợi và tệp tin trên đĩa.
-     *
-     * @param round ván bài hoàn thành
-     * @throws IOException nếu lỗi ghi tệp trên đĩa
-     */
     public synchronized void enqueue(CompletedRound round) throws IOException {
         String roundId = round.result().roundId();
         if (!UUID_PATTERN.matcher(roundId).matches()) {

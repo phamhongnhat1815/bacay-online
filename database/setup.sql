@@ -1,6 +1,3 @@
--- BA CAY ONLINE / MySQL 8.0.16+
--- Stop the game server, then run this ENTIRE file in MySQL Workbench.
--- Keeps existing accounts and history. Safe to run again.
 SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS bacay_online CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE bacay_online;
@@ -30,13 +27,12 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS app_migrations (name VARCHAR(100) PRIMARY KEY) ENGINE=InnoDB;
 
--- Migration: Add role column if updating from older schema
 DROP PROCEDURE IF EXISTS bacay_migration_add_role;
 DELIMITER $$
 CREATE PROCEDURE bacay_migration_add_role()
 BEGIN
  IF NOT EXISTS (
-  SELECT 1 FROM information_schema.COLUMNS 
+  SELECT 1 FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'
  ) THEN
   ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'USER' AFTER status;
@@ -47,7 +43,6 @@ DELIMITER ;
 CALL bacay_migration_add_role();
 DROP PROCEDURE IF EXISTS bacay_migration_add_role;
 
--- Seed default admin account if not already present
 INSERT IGNORE INTO users (username, password_hash, display_name, email, balance, status, role)
 VALUES ('admin', 'PBKDF2WithHmacSHA256$310000$EfKs/XzG+8Vp5yQhTVKyTQ==$vi9gJIPIqJM3y4yvHlhZFhK41VhlynpSlpcdCwY+aRc=', 'Quản Trị Viên', 'admin@bacay.local', 0.00, 'ACTIVE', 'ADMIN');
 
@@ -125,8 +120,6 @@ CREATE TABLE IF NOT EXISTS admin_adjustments (
  FOREIGN KEY(target_user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- One-time starting points for old accounts with zero balance.
--- Preserve the session Safe Updates setting, including if an error occurs.
 DROP PROCEDURE IF EXISTS bacay_starting_points;
 DELIMITER $$
 CREATE PROCEDURE bacay_starting_points()

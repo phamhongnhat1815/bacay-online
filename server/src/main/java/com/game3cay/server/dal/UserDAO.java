@@ -20,11 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Data Access Object (DAO) cho bảng {@code users} và các bảng nghiệp vụ tài khoản.
- */
 public final class UserDAO {
-
     public record Account(UserDTO profile, String passwordHash) {}
 
     private final ConnectionProvider connections;
@@ -72,7 +68,6 @@ public final class UserDAO {
 
         try (Connection conn = connections.open();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-
             stmt.setString(1, username);
             stmt.setString(2, hash);
             stmt.setString(3, name);
@@ -114,7 +109,6 @@ public final class UserDAO {
 
         try (Connection conn = connections.open();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, name);
             stmt.setString(2, email);
             stmt.setString(3, email);
@@ -133,7 +127,6 @@ public final class UserDAO {
 
         try (Connection conn = connections.open();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, replacement);
             stmt.setLong(2, id);
             stmt.setString(3, expected);
@@ -141,8 +134,6 @@ public final class UserDAO {
             return stmt.executeUpdate() == 1;
         }
     }
-
-    // --- Admin DAO Methods ---
 
     public PageResult<AdminUserItem> findUsersForAdmin(String query, String statusFilter, int page, int pageSize)
             throws SQLException {
@@ -362,7 +353,6 @@ public final class UserDAO {
                 role = r;
             }
         } catch (SQLException ignored) {
-            // DB chưa có cột role
         }
 
         UserDTO dto = new UserDTO(

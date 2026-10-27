@@ -3,12 +3,6 @@ package com.game3cay.shared.model;
 import java.io.Serial;
 import java.io.Serializable;
 
-/**
- * Sự kiện tin nhắn chat trong một bàn chơi cụ thể.
- *
- * @param roomId  ID bàn chơi nhận tin
- * @param message nội dung tin nhắn chat
- */
 public record RoomChatEvent(
         long roomId,
         ChatMessage message

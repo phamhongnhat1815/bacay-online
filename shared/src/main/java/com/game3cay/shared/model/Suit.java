@@ -1,16 +1,12 @@
 package com.game3cay.shared.model;
 
-/**
- * Chất bài theo thứ tự so sánh 3 Cây: RÔ > CƠ > BÍCH > CHUỒN (cao → thấp).
- * Ordinal của enum KHÔNG dùng để so sánh; dùng {@link #compareValue()} thay thế.
- */
 public enum Suit {
     CHUON(1, "Chuồn", "♣"),
     BICH(2, "Bích",  "♠"),
     CO  (3, "Cơ",    "♥"),
     RO  (4, "Rô",    "♦");
 
-    private final int compareValue; // Giá trị so sánh (cao hơn = mạnh hơn)
+    private final int compareValue;
     private final String displayName;
     private final String symbol;
 
