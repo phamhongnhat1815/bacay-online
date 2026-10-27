@@ -1,191 +1,152 @@
-# **1. Tổng quan hệ thống**
+# Luật Chơi Ba Cây (Game Rules)
 
--   Hệ thống có một server và nhiều client. Server lưu toàn bộ thông tin
-    và dữ liệu của hệ thống.
+Tài liệu này quy định đầy đủ và chính xác toàn bộ luật chơi, phân cấp xếp bài, cơ chế so chất và quy tắc đặt cược trong trò chơi **Ba Cây Online**.
 
--   Để chơi, người chơi phải login vào tài khoản của mình từ một máy
-    client. Sau khi login thành công, giao diện hiện lên danh sách các
-    bàn chơi đang mở. Mỗi bàn chơi có các thông tin: tên bàn, số người
-    đang chơi, số người tối đa và trạng thái của bàn.
+---
 
--   Người chơi có thể chọn một bàn đang có sẵn để tham gia hoặc tạo một
-    bàn chơi mới. Khi tạo bàn, người chơi có thể thiết lập tên bàn và số
-    lượng người chơi tối đa.
+## 1. Quy Định Chung & Bộ Bài
 
--   Khi một người chơi tham gia vào bàn, hệ thống sẽ thông báo cho những
-    người chơi khác trong bàn về người chơi mới. Danh sách người chơi
-    trong bàn sẽ hiển thị tên và trạng thái của từng người.
+- **Bộ bài sử dụng:** Bộ bài Tây tiêu chuẩn **52 lá** (từ 2 đến Át, gồm 4 chất: Bích ♠, Chuồn/Tép ♣, Rô ♦, Cơ ♥).
+- **Số lượng người chơi:** Mỗi bàn có từ **2 đến 8 người chơi**.
+- **Tiền cược sàn (Ante):** Mỗi người chơi khi bắt đầu ván bài phải góp mức cược cơ bản của bàn (mặc định là **10 điểm**, chủ bàn có quyền tùy chỉnh).
+- **Chia bài:** Mỗi người chơi được chia ngẫu nhiên **3 lá bài** kín từ bộ bài 52 lá đã được xáo trộn ngẫu nhiên. Trong suốt ván, không bao giờ xảy ra tình trạng trùng lá giữa các người chơi.
 
--   Khi bàn đã có đủ số người tối thiểu để bắt đầu, người tạo bàn hoặc
-    người có quyền bắt đầu có thể nhấn nút "Bắt đầu". Server sẽ tiến
-    hành tạo một ván chơi mới và chia bài cho tất cả người chơi trong
-    bàn.
+---
 
--   Mỗi người chơi được server chia 3 lá bài. Bài của mỗi người chỉ được
-    hiển thị cho chính người đó. Server chịu trách nhiệm quản lý bộ bài,
-    chia bài và đảm bảo mỗi lá bài chỉ được chia cho một người chơi
-    trong cùng một ván.
+## 2. Thứ Tự Phân Loại Bộ Bài (Hand Hierarchy)
 
-# **2. Chia bài và xác định loại bài**
+Thứ tự sức mạnh của các bộ bài được xếp từ cao xuống thấp như sau:
 
--   Sau khi nhận được 3 lá bài, hệ thống sẽ tự động tính toán và xác
-    định loại bài của từng người chơi. Các loại bài gồm: Sáp, Liêng, Bồ
-    đội và Điểm.
+$$\mathbf{Sáp} > \mathbf{Liêng} > \mathbf{Bồ\ Đội} > \mathbf{Điểm}$$
 
--   **Sáp** là trường hợp người chơi có 3 lá bài cùng giá trị, ví dụ
-    3-3-3, 7-7-7, K-K-K. Trong các bộ Sáp, giá trị càng cao thì bài càng
-    mạnh và A-A-A là Sáp cao nhất.
+```mermaid
+graph TD
+    SAP["1. SÁP (Three of a Kind)<br/>Ba lá cùng giá trị (AAA > KKK > ... > 222)"] --> LIENG["2. LIÊNG (Straight)<br/>Ba lá liên tiếp (Q-K-A > ... > A-2-3)"]
+    LIENG --> BODOI["3. BỒ ĐỘI (Picture Cards)<br/>Cả ba lá là J, Q, K (Không gồm Sáp/Liêng)"]
+    BODOI --> DIEM["4. ĐIỂM (Modulo 10 Sum)<br/>Tổng chia 10 lấy dư (9 Điểm > 8 Điểm > ... > 0 Điểm)"]
 
--   **Liêng** là trường hợp người chơi có 3 lá bài liên tiếp nhau theo
-    thứ tự của bài Tiến lên, ví dụ A-2-3, 2-3-4, 5-6-7, J-Q-K, Q-K-A.
-    Trong các bộ Liêng, Q-K-A là Liêng cao nhất.
+    style SAP fill:#1a3a5f,stroke:#d4af37,stroke-width:2px,color:#ffffff
+    style LIENG fill:#142d4a,stroke:#d4af37,stroke-width:1.5px,color:#ffffff
+    style BODOI fill:#0f2238,stroke:#d4af37,stroke-width:1.5px,color:#ffffff
+    style DIEM fill:#0b1827,stroke:#96a6ba,stroke-width:1px,color:#ffffff
+```
 
--   **Bồ đội** là trường hợp cả 3 lá bài đều là bài hình người, tức là
-    các lá J, Q hoặc K, ví dụ J-Q-K, J-J-Q, Q-K-K. Bất kỳ bộ 3 lá nào
-    chỉ gồm J, Q, K đều được tính là Bồ đội.
+### 2.1. Sáp (Three of a Kind)
+- **Định nghĩa:** Bộ 3 lá bài có **cùng giá trị số**.
+- **Thứ tự giá trị:**
+  $$\mathbf{A-A-A} > \mathbf{K-K-K} > \mathbf{Q-Q-Q} > \mathbf{J-J-J} > \mathbf{10-10-10} > \dots > \mathbf{2-2-2}$$
+- Sáp Át (A-A-A) là bộ bài mạnh nhất trong trò chơi.
 
--   Nếu không thuộc Sáp, Liêng hoặc Bồ đội thì bài được tính theo
-    **điểm**. Giá trị các lá bài số được tính theo giá trị trên lá bài;
-    các lá J, Q, K được tính là 0 điểm. Tổng điểm của 3 lá được lấy hàng
-    đơn vị. Ví dụ 3-5-K có tổng là 8 điểm, 7-8-4 có tổng là 19 nên được
-    tính là 9 điểm. 9 điểm là điểm cao nhất trong các trường hợp bài
-    điểm thông thường.
+### 2.2. Liêng (Straight)
+- **Định nghĩa:** Bộ 3 lá bài có **giá trị số liên tiếp nhau** (không bắt buộc đồng chất).
+- **Thứ tự giá trị:**
+  - Cao nhất: **Q - K - A** (Liêng đại).
+  - Tiếp theo: **J - Q - K** > **10 - J - Q** > **9 - 10 - J** > ... > **2 - 3 - 4**.
+  - Thấp nhất: **A - 2 - 3** (Át được tính là 1 trong chuỗi thấp nhất).
+- **So sánh khi hai người cùng Liêng:**
+  - So sánh theo cấp Liêng (ví dụ: Q-K-A thắng J-Q-K).
+  - Nếu cùng cấp Liêng (ví dụ: cả hai người cùng có 4-5-6), so sánh theo **Chất** của lá bài cao nhất (xem quy tắc so chất mục 3).
 
-# **3. So sánh và xếp hạng bài**
+### 2.3. Bồ Đội (Face / Picture Cards)
+- **Định nghĩa:** Cả 3 lá bài đều thuộc tập hợp các quân bài hình người: **Jack (J), Queen (Q), King (K)**, nhưng **loại trừ** các trường hợp đã tạo thành Sáp (ví dụ: J-J-J) hoặc Liêng (ví dụ: J-Q-K).
+- **Ví dụ:** J-J-Q, J-K-K, Q-Q-K, J-Q-Q,...
+- **So sánh khi hai người cùng Bồ Đội:**
+  - Sắp xếp các lá bài theo thứ tự ưu tiên chất giảm dần; nếu cùng chất thì so sánh theo giá trị bài (K > Q > J).
 
--   Thứ tự mạnh yếu của các loại bài được quy định như sau: Sáp \> Liêng
-    \> Bồ đội \> Điểm. Vì vậy, Sáp luôn thắng Liêng, Bồ đội và bài điểm;
-    Liêng thắng Bồ đội và bài điểm; Bồ đội thắng bài điểm.
+### 2.4. Điểm (Point Sum Modulo 10)
+- **Định nghĩa:** Các trường hợp bài bình thường còn lại, tính theo tổng điểm của 3 lá chia cho 10 lấy phần dư:
+  - Quân **Át (A)**: tính **1 điểm**.
+  - Các quân từ **2 đến 9**: tính điểm theo đúng số trên mặt lá (**2 đến 9 điểm**).
+  - Các quân **10, J, Q, K**: tính **0 điểm**.
+- **Điểm số cuối cùng:**
+  $$\text{Điểm} = (\text{Lá}_1 + \text{Lá}_2 + \text{Lá}_3) \pmod{10}$$
+- **Xếp hạng:**
+  - Điểm cao nhất là **9 điểm**, thấp nhất là **0 điểm** (còn gọi là "bù" hay "tịt").
+- **So sánh khi bằng điểm:**
+  - Nếu hai người chơi có cùng số điểm (ví dụ: cùng 9 điểm), người nào sở hữu lá bài có chất lớn hơn sẽ chiến thắng (xem quy tắc so chất mục 3).
 
--   Sau khi tất cả người chơi đã nhận bài, server sẽ tiến hành so sánh
-    bài của tất cả người chơi trong bàn để xác định thứ hạng. Người có
-    loại bài mạnh hơn sẽ được xếp trên người có loại bài yếu hơn.
+---
 
--   Nếu hai hoặc nhiều người chơi có cùng loại bài, server sẽ tiếp tục
-    so sánh giá trị của bài. Ví dụ, nếu cùng là Sáp thì K-K-K thắng
-    Q-Q-Q, và A-A-A là Sáp cao nhất. Nếu cùng là Liêng thì Q-K-A là
-    Liêng cao nhất.
+## 3. Quy Tắc So Chất & Lá Bài (Tie-Breaking Rules)
 
--   Nếu hai hoặc nhiều người chơi vẫn có giá trị bài bằng nhau, server
-    sẽ sử dụng chất của các lá bài để phân định thắng thua. Thứ tự chất
-    được quy định là: Rô \> Cơ \> Bích \> Chuồn.
+Khi hai người chơi có cùng loại bài và cùng cấp giá trị, phân định thắng thua theo thứ tự ưu tiên chất truyền thống của Việt Nam:
 
--   Khi xét chất, người chơi có lá bài thuộc chất cao hơn sẽ được xếp
-    trên. Nếu cần tiếp tục phân định thì lần lượt xét theo thứ tự Rô,
-    Cơ, Bích, Chuồn.
+$$\mathbf{Rô\ (\diamond)} > \mathbf{Cơ\ (\heartsuit)} > \mathbf{Bích\ (\spadesuit)} > \mathbf{Chuồn\ /\ Tép\ (\clubsuit)}$$
 
--   Ví dụ, nếu hai người cùng có một bộ Liêng giống nhau về giá trị, hệ
-    thống sẽ tiếp tục xét chất để xác định người thắng. Người có lá Rô
-    cao hơn sẽ thắng; nếu không thể phân định bằng Rô thì tiếp tục xét
-    Cơ, sau đó Bích và Chuồn.
+| Thứ hạng | Tên chất | Ký hiệu | Màu sắc | Độ ưu tiên |
+|:---:|:---:|:---:|:---:|:---:|
+| **1** | **Rô (Diamonds)** | ♦ | Đỏ | **Cao nhất** |
+| **2** | **Cơ (Hearts)** | ♥ | Đỏ | Thứ nhì |
+| **3** | **Bích (Spades)** | ♠ | Đen | Thứ ba |
+| **4** | **Chuồn / Tép (Clubs)** | ♣ | Đen | **Thấp nhất** |
 
-# **4. Kết thúc ván và cập nhật kết quả**
+### So sánh chi tiết từng lá:
+Trong cùng một chất, thứ tự giá trị quân bài từ lớn đến bé là:
+$$\mathbf{A} > \mathbf{K} > \mathbf{Q} > \mathbf{J} > \mathbf{10} > \mathbf{9} > \mathbf{8} > \mathbf{7} > \mathbf{6} > \mathbf{5} > \mathbf{4} > \mathbf{3} > \mathbf{2}$$
 
--   Sau khi server hoàn tất việc so bài, hệ thống sẽ gửi kết quả của ván
-    chơi cho tất cả người chơi trong bàn. Giao diện sẽ hiển thị bài của
-    từng người, loại bài, số điểm và thứ hạng của từng người chơi.
+- Hệ thống sẽ sắp xếp 3 lá bài của mỗi người theo chất giảm dần (Rô $\rightarrow$ Cơ $\rightarrow$ Bích $\rightarrow$ Chuồn), trong cùng chất sắp xếp theo rank giảm dần (A $\rightarrow$ 2).
+- Tiến hành so sánh đối đầu từng lá một (lá thứ nhất, lá thứ hai, lá thứ ba). Người nào có lá vượt trội trước sẽ giành chiến thắng.
 
--   Sau mỗi ván, server sẽ cập nhật kết quả của từng người chơi, bao gồm
-    số ván đã chơi, số ván thắng, số ván thua, số điểm hiện có và các
-    thống kê liên quan.
+---
 
--   Sau khi ván kết thúc, server sẽ hiển thị thông báo cho tất cả người
-    chơi trong bàn về việc có muốn chơi tiếp hay không. Nếu đủ số người
-    cần thiết đồng ý, server sẽ tạo một ván mới và tiếp tục chia bài.
+## 4. Diễn Biến Vòng Cược (Betting Round)
 
--   Người chơi cũng có thể chọn nút Thoát để rời khỏi bàn hoặc kết thúc
-    việc chơi. Khi một người chơi thoát, server sẽ thông báo cho những
-    người chơi còn lại và cập nhật trạng thái của bàn.
+Mỗi ván bài diễn ra qua các bước chuẩn hóa sau:
 
-# **5. Lịch sử và bảng xếp hạng**
+```mermaid
+flowchart TD
+    A[Bắt đầu ván] --> B[Trừ Ante 10 điểm / người]
+    B --> C[Chia 3 lá bài ngẫu nhiên cho mỗi người]
+    C --> D[Vòng cược: Bắt đầu từ người kế tiếp chủ bàn theo chiều kim đồng hồ]
+    D --> E{Đến lượt hành động<br/>Thời gian suy nghĩ: 30s}
+    E -- Quá 30s --> F[Hệ thống tự động Úp bài / FOLD]
+    E -- Chọn hành động --> G[Kiểm tra / Theo / Tố đến / Tất tay / Úp bài]
+    G --> H{Vòng cược hoàn tất?}
+    F --> H
+    H -- Chưa --> D
+    H -- Chỉ còn 1 người chưa úp --> I[Người duy nhất thắng ván<br/>Không bắt buộc lật bài]
+    H -- Có từ 2 người so bài --> J[So bài Showdown<br/>Lật bài & Phân định theo Hand Hierarchy]
+    I --> K[Thanh toán Pot chính & Pot phụ]
+    J --> K
+    K --> L[Lưu kết quả MySQL & Cập nhật BXH]
+```
 
--   Kết quả các ván đấu được lưu vào server. Mỗi người chơi có thể vào
-    xem lịch sử các ván đã chơi, bao gồm thời gian chơi, bàn chơi, những
-    người cùng tham gia, loại bài nhận được và kết quả của ván.
+### 4.1. Các Hành Động Đặt Cược
+1. **Kiểm tra (Check):**
+   - Chỉ khả dụng khi số điểm bạn đã cược trong ván bằng với mức cược cao nhất hiện tại trên bàn.
+   - Giữ nguyên mức cược và chuyển lượt cho người kế tiếp.
+2. **Theo (Call):**
+   - Bỏ thêm số điểm cần thiết để đưa tổng tiền cược của mình bằng với mức cược cao nhất trên bàn.
+   - Nếu số dư không đủ số điểm cần theo, hành động sẽ tự động chuyển thành **Tất tay**.
+3. **Tố đến (Raise to):**
+   - Nâng tổng số điểm đóng góp của mình trong ván lên một mức cụ thể (phải lớn hơn mức cược cao nhất hiện tại).
+   - Số điểm nhập vào ô tố là **tổng điểm tích lũy của bạn trong ván** (bao gồm cả tiền Ante cơ bản).
+4. **Tất tay (All-in):**
+   - Đặt cược toàn bộ số điểm còn lại trong tài khoản vào ván đấu.
+   - Người tất tay không bị buộc phải úp bài và được quyền đi tiếp đến vòng so bài để tranh các phần pot mà mình đã đóng góp.
+5. **Úp bài (Fold):**
+   - Bỏ cuộc trong ván hiện tại. Toàn bộ số tiền đã cược trước đó sẽ nằm lại trên bàn.
 
--   Mỗi người chơi đều có thể xem bảng xếp hạng toàn bộ người chơi trong
-    hệ thống, được sắp xếp lần lượt theo các tiêu chí: tổng số điểm giảm
-    dần, tổng số trận thắng giảm dần.
+### 4.2. Giới Hạn Thời Gian (Turn Timeout)
+- Mỗi lượt hành động có thời gian suy nghĩ tối đa là **30 giây**.
+- Có thanh đo thời gian đếm ngược màu vàng ngay dưới avatar người chơi.
+- Nếu người chơi không chọn hành động trong 30 giây, máy chủ sẽ tự động kích hoạt hành động **Úp bài (Fold)** để bảo đảm ván đấu không bị gián đoạn.
 
--   Server chịu trách nhiệm quản lý toàn bộ trạng thái của các bàn chơi,
-    người chơi đang online, quá trình chia bài, tính toán kết quả, lưu
-    lịch sử và cập nhật bảng xếp hạng.
+### 4.3. Cơ Chế Pot Phụ (Side Pots)
+- Khi một hoặc nhiều người chơi chọn **Tất tay** với số điểm ít hơn mức cược của những người khác, hệ thống sẽ tự động chia quỹ cược thành **Main Pot (Pot chính)** và một hoặc nhiều **Side Pots (Pot phụ)**.
+- Người tất tay chỉ được quyền tranh giải trong các Pot mà họ có tham gia đóng góp điểm. Những người còn nhiều điểm sẽ tiếp tục cược với nhau để tranh Side Pot riêng.
 
-# **6. Luật tố (đặt cược)**
+---
 
--   Trước khi vào ván mới, hệ thống yêu cầu tất cả người chơi trong bàn
-    đặt cược cơ bản (tiền cửa/ante) theo mức đã được thiết lập khi tạo
-    bàn.
+## 5. Kết Thúc Ván & Xử Lý Sự Cố Kết Nối
 
--   Sau khi chia bài xong, ván chơi chuyển sang giai đoạn tố. Người chơi
-    lần lượt theo chiều kim đồng hồ, bắt đầu từ người ngồi kế người chia
-    (hoặc người tạo bàn), thực hiện một trong các hành động: **Tố** (đặt
-    thêm tiền cược), **Theo** (đặt bằng mức cược cao nhất hiện tại),
-    hoặc **Úp** (bỏ bài, không tham gia tranh phần thắng ở ván đó nữa).
+### 5.1. Thắng Trực Tiếp (Sole Survivor)
+- Nếu tất cả người chơi khác đều đã úp bài và chỉ còn duy nhất 1 người trụ lại, người đó ngay lập tức giành chiến thắng toàn bộ số điểm trên bàn mà **không cần lật bài**.
 
--   Mỗi lượt tố, người chơi có thể chọn mức tố tùy ý nhưng không được
-    thấp hơn mức cược cao nhất hiện tại của bàn và không được vượt quá
-    mức tố tối đa do bàn quy định (nếu có giới hạn) hoặc vượt quá số
-    điểm/tiền còn lại của người chơi (all-in).
+### 5.2. So Bài Công Khai (Showdown)
+- Khi tất cả người chơi còn quyền đã hoàn thành đặt cược và cân bằng mức theo, bài của tất cả người chơi tham gia so bài sẽ tự động lật mở trên bàn.
+- Màn hình kết quả hiển thị tên người chiến thắng và số điểm cộng/trừ trong **6 giây** trước khi chuyển về trạng thái chờ ván mới.
 
--   Khi một người chơi tố, những người chơi còn lại (chưa úp) phải Theo
-    hoặc Tố tiếp để tiếp tục ở lại ván; nếu không đủ khả năng theo,
-    người chơi có thể chọn All-in với toàn bộ số điểm còn lại.
-
--   Vòng tố kết thúc khi tất cả người chơi còn lại trong ván đã đặt cược
-    bằng nhau, hoặc chỉ còn duy nhất một người chưa úp.
-
--   Nếu tất cả người chơi khác đều úp, người còn lại được xác định thắng
-    ván ngay lập tức và nhận toàn bộ tiền cược (pot) mà không cần lật
-    bài so sánh với người khác (bài vẫn được ghi nhận vào lịch sử nhưng
-    không công khai nếu người chơi không chọn "lật bài").
-
--   Khi vòng tố kết thúc mà còn từ hai người chơi trở lên chưa úp,
-    server tiến hành so bài giữa những người này theo đúng thứ tự Sáp \>
-    Liêng \> Bồ đội \> Điểm như đã quy định, để xác định người thắng ván
-    và nhận toàn bộ tiền cược trong pot.
-
--   Trường hợp nhiều người chơi all-in với số điểm khác nhau, server
-    chia pot thành các pot phụ (side pot) tương ứng với mức tiền mỗi
-    người đã góp, đảm bảo người chơi chỉ tranh phần pot tương ứng với số
-    tiền mình đã đặt.
-
--   Sau khi ván kết thúc, server cập nhật số điểm của từng người chơi
-    dựa trên kết quả tố và so bài, đồng thời lưu chi tiết các mức tố,
-    hành động (tố/theo/úp) của từng người vào lịch sử ván đấu.
-
--   Nếu một người chơi hết điểm cược (không còn đủ điểm để tham gia mức
-    cược cơ bản của bàn), hệ thống sẽ tự động chuyển trạng thái người
-    chơi đó sang "xem" (spectator) hoặc yêu cầu rời bàn/nạp thêm điểm
-    tùy theo cấu hình của bàn.
-
-# **7. Tính năng chat trong bàn**
-
--   Mỗi bàn chơi có một khung chat riêng, chỉ hiển thị cho những người
-    chơi và người xem đang có mặt trong bàn đó.
-
--   Người chơi có thể gửi tin nhắn văn bản tới tất cả thành viên trong
-    bàn; tin nhắn hiển thị kèm tên người gửi và thời gian gửi.
-
--   Ngoài tin nhắn văn bản, hệ thống hỗ trợ gửi biểu tượng cảm xúc
-    (emoji/sticker) nhanh để người chơi phản ứng trong lúc chơi mà không
-    làm gián đoạn ván đấu.
-
--   Bên cạnh tin nhắn của người chơi, hệ thống tự động gửi các thông báo
-    hệ thống vào khung chat, ví dụ: người chơi vào/rời bàn, bắt đầu ván
-    mới, kết quả ván, hoặc khi có người tố/theo/úp.
-
--   Người chơi có thể ẩn hoặc tắt tiếng (mute) chat của một người chơi
-    cụ thể trong bàn nếu không muốn nhận tin nhắn từ người đó.
-
--   Hệ thống có cơ chế lọc từ ngữ không phù hợp (spam, từ ngữ nhạy cảm)
-    trước khi hiển thị tin nhắn cho các thành viên khác trong bàn.
-
--   Lịch sử chat của một bàn được lưu tạm thời trong phiên chơi hiện
-    tại; khi bàn đóng hoặc người chơi rời bàn, lịch sử chat của bàn đó
-    không được lưu lại vào hệ thống lâu dài (trừ khi có yêu cầu lưu trữ
-    phục vụ kiểm duyệt).
-
--   Quản trị viên hệ thống có quyền xem lại nội dung chat của các bàn
-    (nếu cần) để xử lý các trường hợp vi phạm quy định như chửi bậy, lừa
-    đảo, hoặc hành vi gian lận trong khi chơi.
+### 5.3. Mất Kết Nối & Hủy Ván
+- Người chơi bị rớt mạng hoặc tắt ứng dụng giữa ván: Hệ thống xem như người đó đã **Úp bài**; số điểm đã cược vẫn ở trên bàn.
+- Nếu số lượng người chơi kết nối hợp lệ trong bàn giảm xuống dưới 2 người trước khi ván hoàn tất, ván bài sẽ được đánh dấu là **CANCELLED**; toàn bộ số điểm cược trong ván được **hoàn trả 100%** về tài khoản của từng người.

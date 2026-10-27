@@ -3,8 +3,10 @@ package com.game3cay.server.bus;
 import com.game3cay.shared.network.ErrorCode;
 
 /**
- * Exception từ BUS layer — chứa {@link ErrorCode} để handler
- * của Khánh chuyển thẳng thành {@code ERROR} packet gửi cho client.
+ * Ngoại lệ nghiệp vụ ở tầng BUS (Business Service Layer).
+ * <p>
+ * Mang theo mã lỗi nghiệp vụ {@link ErrorCode} để tầng Network
+ * có thể đóng gói trực tiếp thành gói tin phản hồi {@code ERROR} gửi về cho Client.
  */
 public class BUSException extends Exception {
 

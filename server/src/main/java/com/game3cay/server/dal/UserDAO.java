@@ -1,54 +1,383 @@
 package com.game3cay.server.dal;
 
+import com.game3cay.server.bus.BUSException;
 import com.game3cay.server.bus.UserDTO;
-import java.sql.*;
+import com.game3cay.shared.model.AdminLedgerItem;
+import com.game3cay.shared.model.AdminStatsSnapshot;
+import com.game3cay.shared.model.AdminUserItem;
+import com.game3cay.shared.model.PageResult;
+import com.game3cay.shared.network.ErrorCode;
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
-/** Truy vấn có tham số; hash chỉ tồn tại ở DAL/BUS, không nằm trong UserDTO. */
+/**
+ * Data Access Object (DAO) cho bảng {@code users} và các bảng nghiệp vụ tài khoản.
+ */
 public final class UserDAO {
+
     public record Account(UserDTO profile, String passwordHash) {}
+
     private final ConnectionProvider connections;
 
     public UserDAO(ConnectionProvider connections) {
-        this.connections = java.util.Objects.requireNonNull(connections);
+        this.connections = Objects.requireNonNull(connections, "connections không được null");
     }
 
     public Account findByUsername(String username) throws SQLException {
-        try (Connection c = connections.open();
-             PreparedStatement s = c.prepareStatement("SELECT * FROM users WHERE username = ?")) {
-            s.setString(1, username);
-            try (ResultSet r = s.executeQuery()) { return r.next() ? read(r) : null; }
-        }
-    }
-
-    public Account findById(long id) throws SQLException {
-        try (Connection c = connections.open();
-             PreparedStatement s = c.prepareStatement("SELECT * FROM users WHERE id = ?")) {
-            s.setLong(1, id);
-            try (ResultSet r = s.executeQuery()) { return r.next() ? read(r) : null; }
-        }
-    }
-
-    public UserDTO insert(String username, String hash, String name, String email)
-            throws SQLException {
-        try (Connection c = connections.open();
-             PreparedStatement s = c.prepareStatement(
-                     "INSERT INTO users (username,password_hash,display_name,email) VALUES (?,?,?,?)",
-                     Statement.RETURN_GENERATED_KEYS)) {
-            s.setString(1, username); s.setString(2, hash);
-            s.setString(3, name); s.setString(4, email);
-            s.executeUpdate();
-            try (ResultSet keys = s.getGeneratedKeys()) {
-                if (!keys.next()) throw new SQLException("Thiếu ID tài khoản mới");
-                return new UserDTO(keys.getLong(1), username, name, email, null,
-                        java.math.BigDecimal.ZERO.setScale(2), "ACTIVE", 0, 0, 0);
+        String sql = "SELECT * FROM users WHERE username = ?";
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? readAccount(rs) : null;
             }
         }
     }
 
-    private static Account read(ResultSet r) throws SQLException {
-        return new Account(new UserDTO(r.getLong("id"), r.getString("username"),
-                r.getString("display_name"), r.getString("email"), r.getString("avatar_url"),
-                r.getBigDecimal("balance"), r.getString("status"), r.getInt("total_games"),
-                r.getInt("total_wins"), r.getInt("total_losses")), r.getString("password_hash"));
+    public Account findById(long id) throws SQLException {
+        String sql = "SELECT * FROM users WHERE id = ?";
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? readAccount(rs) : null;
+            }
+        }
+    }
+
+    public boolean existsByUsername(String username) throws SQLException {
+        String sql = "SELECT 1 FROM users WHERE username = ?";
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    public UserDTO insert(String username, String hash, String name, String email) throws SQLException {
+        String sql = "INSERT INTO users (username, password_hash, display_name, email, balance) "
+                + "VALUES (?, ?, ?, ?, 1000.00)";
+
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+
+            stmt.setString(1, username);
+            stmt.setString(2, hash);
+            stmt.setString(3, name);
+            stmt.setString(4, email);
+            stmt.executeUpdate();
+
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new SQLException("Không nhận được khóa sinh tự động cho tài khoản mới");
+                }
+                long generatedId = keys.getLong(1);
+                return new UserDTO(
+                        generatedId,
+                        username,
+                        name,
+                        email,
+                        null,
+                        new BigDecimal("1000.00"),
+                        "ACTIVE",
+                        "USER",
+                        0,
+                        0,
+                        0
+                );
+            }
+        }
+    }
+
+    public UserDTO create(String username, String hash, String name, String email) throws SQLException {
+        return insert(username, hash, name, email);
+    }
+
+    public void updateProfile(long id, String name, String email, String avatar) throws SQLException {
+        String sql = "UPDATE users SET "
+                + "display_name = COALESCE(?, display_name), "
+                + "email = CASE WHEN ? IS NULL THEN email ELSE NULLIF(?, '') END, "
+                + "avatar_url = COALESCE(?, avatar_url) "
+                + "WHERE id = ?";
+
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, name);
+            stmt.setString(2, email);
+            stmt.setString(3, email);
+            stmt.setString(4, avatar);
+            stmt.setLong(5, id);
+
+            int affectedRows = stmt.executeUpdate();
+            if (affectedRows != 1) {
+                throw new SQLException("Không tìm thấy tài khoản với id: " + id);
+            }
+        }
+    }
+
+    public boolean changePassword(long id, String expected, String replacement) throws SQLException {
+        String sql = "UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?";
+
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, replacement);
+            stmt.setLong(2, id);
+            stmt.setString(3, expected);
+
+            return stmt.executeUpdate() == 1;
+        }
+    }
+
+    // --- Admin DAO Methods ---
+
+    public PageResult<AdminUserItem> findUsersForAdmin(String query, String statusFilter, int page, int pageSize)
+            throws SQLException {
+        StringBuilder where = new StringBuilder(" WHERE 1=1 ");
+        List<Object> params = new ArrayList<>();
+
+        if (query != null && !query.isBlank()) {
+            where.append(" AND (username LIKE ? OR display_name LIKE ? OR email LIKE ?) ");
+            String pattern = "%" + query.trim() + "%";
+            params.add(pattern);
+            params.add(pattern);
+            params.add(pattern);
+        }
+
+        if (statusFilter != null && !statusFilter.isBlank() && !"ALL".equalsIgnoreCase(statusFilter)) {
+            where.append(" AND status = ? ");
+            params.add(statusFilter.trim().toUpperCase());
+        }
+
+        String countSql = "SELECT COUNT(*) FROM users " + where;
+        int totalItems = 0;
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(countSql)) {
+            for (int i = 0; i < params.size(); i++) {
+                stmt.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    totalItems = rs.getInt(1);
+                }
+            }
+        }
+
+        int totalPages = (totalItems == 0) ? 0 : (totalItems + pageSize - 1) / pageSize;
+        if (totalItems == 0) {
+            return new PageResult<>(List.of(), page, pageSize, 0, 0);
+        }
+
+        String dataSql = "SELECT id, username, display_name, email, balance, status, role, "
+                + "total_games, total_wins, total_losses, created_at FROM users "
+                + where + " ORDER BY id DESC LIMIT ? OFFSET ?";
+
+        List<AdminUserItem> items = new ArrayList<>();
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(dataSql)) {
+            int idx = 1;
+            for (Object param : params) {
+                stmt.setObject(idx++, param);
+            }
+            stmt.setInt(idx++, pageSize);
+            stmt.setInt(idx, page * pageSize);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    items.add(new AdminUserItem(
+                            rs.getLong("id"),
+                            rs.getString("username"),
+                            rs.getString("display_name"),
+                            rs.getString("email"),
+                            rs.getBigDecimal("balance"),
+                            rs.getString("status"),
+                            rs.getString("role"),
+                            rs.getInt("total_games"),
+                            rs.getInt("total_wins"),
+                            rs.getInt("total_losses"),
+                            rs.getTimestamp("created_at").getTime()
+                    ));
+                }
+            }
+        }
+
+        return new PageResult<>(items, page, pageSize, totalItems, totalPages);
+    }
+
+    public boolean updateUserStatus(long userId, String status) throws SQLException {
+        String sql = "UPDATE users SET status = ? WHERE id = ?";
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            stmt.setLong(2, userId);
+            return stmt.executeUpdate() == 1;
+        }
+    }
+
+    public void adjustUserBalance(long adminId, long targetUserId, BigDecimal delta, String reason)
+            throws SQLException, BUSException {
+        try (Connection conn = connections.open()) {
+            conn.setAutoCommit(false);
+            try {
+                BigDecimal currentBalance;
+                try (PreparedStatement lockStmt = conn.prepareStatement(
+                        "SELECT balance FROM users WHERE id = ? FOR UPDATE")) {
+                    lockStmt.setLong(1, targetUserId);
+                    try (ResultSet rs = lockStmt.executeQuery()) {
+                        if (!rs.next()) {
+                            throw new BUSException(ErrorCode.INVALID_REQUEST, "Không tìm thấy người dùng");
+                        }
+                        currentBalance = rs.getBigDecimal("balance");
+                    }
+                }
+
+                BigDecimal newBalance = currentBalance.add(delta);
+                if (newBalance.signum() < 0) {
+                    throw new BUSException(ErrorCode.INVALID_BET_AMOUNT, "Số dư sau điều chỉnh không thể âm");
+                }
+
+                try (PreparedStatement updateStmt = conn.prepareStatement(
+                        "UPDATE users SET balance = ? WHERE id = ?")) {
+                    updateStmt.setBigDecimal(1, newBalance);
+                    updateStmt.setLong(2, targetUserId);
+                    updateStmt.executeUpdate();
+                }
+
+                String adjustmentId = "ADJ-" + UUID.randomUUID();
+                try (PreparedStatement insertStmt = conn.prepareStatement(
+                        "INSERT INTO admin_adjustments (adjustment_id, admin_user_id, target_user_id, delta, balance_before, balance_after, reason) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                    insertStmt.setString(1, adjustmentId);
+                    insertStmt.setLong(2, adminId);
+                    insertStmt.setLong(3, targetUserId);
+                    insertStmt.setBigDecimal(4, delta);
+                    insertStmt.setBigDecimal(5, currentBalance);
+                    insertStmt.setBigDecimal(6, newBalance);
+                    insertStmt.setString(7, reason != null ? reason : "Admin điều chỉnh điểm");
+                    insertStmt.executeUpdate();
+                }
+
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+                if (e instanceof BUSException be) {
+                    throw be;
+                }
+                throw e;
+            }
+        }
+    }
+
+    public AdminStatsSnapshot getAdminStats(long onlineUsers, int activeRooms) throws SQLException {
+        long totalUsers = 0;
+        BigDecimal totalBalance = BigDecimal.ZERO;
+        int roundsToday = 0;
+
+        try (Connection conn = connections.open()) {
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*), COALESCE(SUM(balance), 0) FROM users")) {
+                if (rs.next()) {
+                    totalUsers = rs.getLong(1);
+                    totalBalance = rs.getBigDecimal(2);
+                }
+            }
+
+            long startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM play_rounds WHERE ended_at >= ?")) {
+                stmt.setLong(1, startOfDay);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        roundsToday = rs.getInt(1);
+                    }
+                }
+            }
+        }
+
+        return new AdminStatsSnapshot(onlineUsers, activeRooms, totalUsers, totalBalance, roundsToday);
+    }
+
+    public PageResult<AdminLedgerItem> getLedgerEntries(int page, int pageSize) throws SQLException {
+        int totalItems = 0;
+        try (Connection conn = connections.open();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM play_ledger")) {
+            if (rs.next()) {
+                totalItems = rs.getInt(1);
+            }
+        }
+
+        int totalPages = (totalItems == 0) ? 0 : (totalItems + pageSize - 1) / pageSize;
+        if (totalItems == 0) {
+            return new PageResult<>(List.of(), page, pageSize, 0, 0);
+        }
+
+        String sql = "SELECT l.round_id, l.user_id, u.username, l.delta, l.balance_before, l.balance_after, "
+                + "COALESCE(r.ended_at, UNIX_TIMESTAMP() * 1000) AS ts "
+                + "FROM play_ledger l "
+                + "JOIN users u ON l.user_id = u.id "
+                + "LEFT JOIN play_rounds r ON l.round_id = r.round_id "
+                + "ORDER BY ts DESC LIMIT ? OFFSET ?";
+
+        List<AdminLedgerItem> items = new ArrayList<>();
+        try (Connection conn = connections.open();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, pageSize);
+            stmt.setInt(2, page * pageSize);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    items.add(new AdminLedgerItem(
+                            rs.getString("round_id"),
+                            rs.getLong("user_id"),
+                            rs.getString("username"),
+                            rs.getBigDecimal("delta"),
+                            rs.getBigDecimal("balance_before"),
+                            rs.getBigDecimal("balance_after"),
+                            rs.getLong("ts")
+                    ));
+                }
+            }
+        }
+
+        return new PageResult<>(items, page, pageSize, totalItems, totalPages);
+    }
+
+    private static Account readAccount(ResultSet rs) throws SQLException {
+        String role = "USER";
+        try {
+            String r = rs.getString("role");
+            if (r != null && !r.isBlank()) {
+                role = r;
+            }
+        } catch (SQLException ignored) {
+            // DB chưa có cột role
+        }
+
+        UserDTO dto = new UserDTO(
+                rs.getLong("id"),
+                rs.getString("username"),
+                rs.getString("display_name"),
+                rs.getString("email"),
+                rs.getString("avatar_url"),
+                rs.getBigDecimal("balance"),
+                rs.getString("status"),
+                role,
+                rs.getInt("total_games"),
+                rs.getInt("total_wins"),
+                rs.getInt("total_losses")
+        );
+        return new Account(dto, rs.getString("password_hash"));
     }
 }

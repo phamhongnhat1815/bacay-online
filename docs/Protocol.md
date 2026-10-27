@@ -1,682 +1,209 @@
-# Protocol.md — Giao Thức Thông Điệp BaCay Online
+# Đặc Tả Giao Thức Mạng (Protocol Specification)
 
-**Phiên bản:** 1.1  
-**Người phụ trách:** Khánh  
-**Cập nhật lần cuối:** 2026-09-27  
-
-> Đây là **hợp đồng triển khai** của cả nhóm. Mọi thay đổi (thêm field, đổi tên type, thay đổi payload) **phải** cập nhật tài liệu này và thông báo cho tất cả thành viên trước khi merge vào `main`.
+Tài liệu này định nghĩa cấu trúc gói tin nhị phân **Packet v2**, danh mục thông điệp, các luồng tương tác và mã lỗi trong hệ thống **Ba Cây Online**.
 
 ---
 
-## 1. Tổng Quan
+## 1. Cấu Trúc Khung Nhị Phân (Packet v2 Frame)
 
-### 1.1 Cơ chế truyền thông
+Giao thức Packet v2 hoạt động trực tiếp trên tầng **TCP Socket**. Mỗi gói tin bao gồm một Header cố định 8 bytes theo sau bởi Payload nhị phân đã serialize:
 
 ```
-Client A ──┐
-Client B ──┤──► ServerSocket (port 8888) ──► ClientHandler thread
-Client C ──┘                                      │
-                                              ┌───▼────────────┐
-                                              │  SessionManager │  (Khánh - N03)
-                                              │  RoomManager    │  (Khánh - N04)
-                                              │  GameEngine     │  (Trọng - G01-G06)
-                                              │  UserBUS / DAL  │  (Nhật  - D01-D06)
-                                              └────────────────┘
++---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+
+| Byte 0        | Byte 1        | Byte 2        | Byte 3        | Byte 4        | Byte 5        | Byte 6        | Byte 7        |
++---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+
+|      MAGIC (2 bytes)          |  VER (1 byte) | TYPE (1 byte) |              PAYLOAD LENGTH (4 bytes, Big-Endian)             |
+|   0x3C        |   0x33        |     0x02      |  0x01 .. 0x38 |              0 .. 10,485,760 bytes (Max 10MB)                 |
++---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+
+|                                      PAYLOAD (Java Serialized Object Stream)                                                  |
+|                                                     N bytes                                                           |
++---------------+---------------+---------------+---------------+---------------+---------------+---------------+---------------+
 ```
 
-- **TCP**, một kết nối duy trì trong suốt phiên sử dụng.
-- **Serialization:** `ObjectOutputStream` / `ObjectInputStream` — Java Serializable.
-- **Một luồng đọc** trên mỗi kết nối; một đường gửi thống nhất (synchronized hoặc queue).
-- **Thứ tự khởi tạo stream (bắt buộc cả hai phía):**
-  1. Tạo `ObjectOutputStream`, gọi `flush()`.
-  2. Sau đó tạo `ObjectInputStream`.
-  - Vi phạm thứ tự này gây deadlock khi kết nối.
+### Chi tiết Header:
+| Trường | Kích thước | Kiểu dữ liệu | Giá trị quy ước | Ý nghĩa |
+|---|---|---|---|---|
+| **Magic Bytes** | 2 bytes | Byte array | `0x3C 0x33` (`<3`) | Định danh gói tin hợp lệ của Ba Cây Online |
+| **Protocol Version** | 1 byte | Unsigned byte | `0x02` | Phiên bản giao thức (Version 2) |
+| **Packet Type** | 1 byte | Byte | `0x01` – `0x38` | Mã định danh loại thông điệp (xem bảng bên dưới) |
+| **Payload Length** | 4 bytes | Int (Big-Endian) | `0` – `10,485,760` | Độ dài của dữ liệu Payload (tối đa 10 MB) |
+| **Payload** | N bytes | Byte stream | Tuân thủ whitelist | Đối tượng Java Serialization chứa thông tin nghiệp vụ |
 
-### 1.2 Cấu trúc Packet
+---
+
+## 2. Bảo Mật Tuần Tự Hóa (ObjectInputFilter)
+
+Để triệt tiêu hoàn toàn rủi ro tấn công **Java Deserialization Gadget Chain**, lớp `PacketIO` áp dụng `java.io.ObjectInputFilter` kiểm duyệt chặt chẽ:
 
 ```java
-public final class Packet implements Serializable {
-    String protocolVersion; // Phải là "1.0"
-    PacketType type;
-    String requestId;       // UUID — xem quy tắc bên dưới
-    Object data;            // Payload tương ứng type, xem mục 3
-}
+ObjectInputFilter filter = ObjectInputFilter.Config.createFilter(
+    "com.game3cay.shared.model.*;" +
+    "java.lang.String;" +
+    "java.lang.Number;" +
+    "java.lang.Long;" +
+    "java.lang.Integer;" +
+    "java.lang.Boolean;" +
+    "java.math.BigDecimal;" +
+    "java.math.BigInteger;" +
+    "java.util.*;" +
+    "!*" // Từ chối tất cả các lớp ngoài danh mục cho phép
+);
 ```
 
-**Quy tắc `requestId`:**
-
-| Trường hợp | requestId |
-|---|---|
-| Client gửi request | UUID ngẫu nhiên (client tự sinh) |
-| Server phản hồi request | **Copy y nguyên** requestId của request |
-| Server broadcast / push chủ động | `null` |
-
-**Quy tắc `data`:**
-- Phải implement `Serializable`.
-- Kiểu phải khớp với type — xem bảng payload mục 3.
-- **Không được chứa:** socket, stream, JDBC connection, thread, đối tượng Game Engine nội bộ.
-
-### 1.3 Ký hiệu chiều
-
-| Ký hiệu | Nghĩa |
-|---|---|
-| **C→S** | Client gửi lên Server |
-| **S→C\*** | Server gửi riêng cho đúng một client |
-| **S→C (room)** | Server broadcast cho tất cả người trong cùng phòng |
-| **S→C (all)** | Server broadcast cho tất cả client đang kết nối |
+Bất kỳ gói tin nào chứa lớp nằm ngoài whitelist sẽ bị ngắt kết nối ngay lập tức tại tầng mạng.
 
 ---
 
-## 2. Danh Sách PacketType
+## 3. Danh Mục PacketType
 
-### 2.1 Hệ thống
-
-| PacketType | Chiều | Mô tả |
-|---|---|---|
-| `PING` | S→C\* | Server kiểm tra kết nối sống — gửi mỗi 5 giây |
-| `PONG` | C→S | Client phản hồi PING — phải trả trong 15 giây |
-| `ACK` | S→C\* | Xác nhận thành công (không có data riêng) |
-| `ERROR` | S→C\* | Phản hồi lỗi, data là `ErrorPayload` |
-
-### 2.2 Xác thực (Auth)
-
-| PacketType | Chiều | Payload |
-|---|---|---|
-| `LOGIN` | C→S | `AuthRequest` |
-| `REGISTER` | C→S | `RegisterRequest` |
-| `LOGOUT` | C→S | `null` |
-| `AUTH_RESULT` | S→C\* | `AuthResult` |
-
-### 2.3 Hồ sơ (Profile)
-
-| PacketType | Chiều | Payload |
-|---|---|---|
-| `GET_PROFILE` | C→S | `null` (lấy của mình) |
-| `PROFILE_RESULT` | S→C\* | `ProfileResult` |
-| `UPDATE_PROFILE` | C→S | `UpdateProfileRequest` |
-| `CHANGE_PASSWORD` | C→S | `ChangePasswordRequest` |
-
-### 2.4 Lobby
-
-| PacketType | Chiều | Payload |
-|---|---|---|
-| `ROOM_LIST` | C→S | `null` |
-| `ROOM_LIST_RESULT` | S→C\* | `List<RoomSummary>` |
-
-### 2.5 Quản lý phòng
-
-| PacketType | Chiều | Payload |
-|---|---|---|
-| `CREATE_ROOM` | C→S | `CreateRoomRequest` |
-| `JOIN_ROOM` | C→S | `JoinRoomRequest` |
-| `LEAVE_ROOM` | C→S | `null` |
-| `SET_READY` | C→S | `Boolean` |
-| `START_GAME_REQUEST` | C→S | `null` |
-| `ROOM_UPDATED` | S→C (room) | `RoomSnapshot` |
-
-### 2.6 Ván chơi
-
-| PacketType | Chiều | Payload | Ghi chú |
+### 3.1. Phía Client gửi Server (C2S)
+| PacketType | Mã Hex | Payload Type | Mô tả chức năng |
 |---|---|---|---|
-| `START_GAME` | S→C (room) | `GameStartInfo` | Thông báo công khai, không có bài |
-| `DEAL_CARD` | S→C\* | `DealCardPayload` | **Chỉ gửi riêng — KHÔNG BAO GIỜ broadcast** |
-| `GAME_ACTION` | C→S | `GameActionRequest` | RAISE / CALL / FOLD / ALL_IN |
-| `GAME_UPDATED` | S→C (room) | `GameStateSnapshot` | Trạng thái công khai sau mỗi action |
-| `BET_UPDATED` | S→C (room) | `BetStateSnapshot` | Trạng thái đặt cược sau mỗi lượt |
-| `PLAYER_STATE` | S→C\* | `PlayerStateSnapshot` | Trạng thái riêng của người nhận |
-| `ROUND_RESULT` | S→C (room) | `RoundResult` | Kết quả cuối — lật bài, xếp hạng, profit |
+| `LOGIN_REQ` | `0x01` | `AuthRequest` | Yêu cầu đăng nhập tài khoản |
+| `REGISTER_REQ` | `0x02` | `RegisterRequest` | Yêu cầu đăng ký tài khoản mới |
+| `JOIN_ROOM_REQ` | `0x03` | `JoinRoomRequest` | Yêu cầu vào một bàn chơi (1–20) |
+| `LEAVE_ROOM_REQ` | `0x04` | `null` | Rời khỏi bàn chơi hiện tại |
+| `GAME_ACTION_REQ` | `0x05` | `GameActionRequest` | Hành động trong ván (CALL, RAISE, ALL_IN, FOLD) |
+| `START_GAME_REQ` | `0x06` | `null` | Chủ bàn yêu cầu bắt đầu ván bài mới |
+| `READY_REQ` | `0x07` | `null` | Bật/tắt trạng thái sẵn sàng trong bàn |
+| `UPDATE_ANTE_REQ` | `0x08` | `BigDecimal` | Chủ bàn thay đổi mức cược cơ bản |
+| `ROOM_CHAT_REQ` | `0x09` | `String` | Gửi tin nhắn chat trong bàn |
+| `PROFILE_REQ` | `0x0A` | `null` | Yêu cầu lấy thông tin hồ sơ cá nhân |
+| `UPDATE_PROFILE_REQ` | `0x0B` | `UpdateProfileRequest` | Cập nhật tên hiển thị và email |
+| `CHANGE_PASSWORD_REQ` | `0x0C` | `ChangePasswordRequest` | Đổi mật khẩu tài khoản |
+| `PLAY_AGAIN_REQ` | `0x0D` | `Boolean` | Xác nhận tiếp tục chơi sau khi kết thúc ván |
+| `GAME_HISTORY_REQ` | `0x0E` | `PageRequest` | Tra cứu lịch sử ván bài (phân trang) |
+| `LEADERBOARD_REQ` | `0x0F` | `PageRequest` | Tra cứu bảng xếp hạng người chơi (phân trang) |
+| `HEARTBEAT_PING` | `0x2A` | `null` | Giữ kết nối socket (gửi định kỳ mỗi 15s) |
 
-### 2.7 Chơi tiếp
-
-| PacketType | Chiều | Payload |
-|---|---|---|
-| `PLAY_AGAIN_VOTE` | C→S | `Boolean` |
-| `PLAY_AGAIN_PROMPT` | S→C (room) | `PlayAgainPrompt` |
-
-### 2.8 Chat
-
-| PacketType | Chiều | Payload | Ghi chú |
+### 3.2. Phía Server phản hồi Client (S2C)
+| PacketType | Mã Hex | Payload Type | Mô tả chức năng |
 |---|---|---|---|
-| `CHAT_MESSAGE` | C→S | `ChatMessage` | Client gửi lên |
-| `CHAT_MESSAGE` | S→C (room) | `ChatMessage` | Server phát lại sau khi xác nhận |
-| `CHAT_SYSTEM` | S→C (room) | `ChatMessage` (type=SYSTEM) | Thông báo hệ thống tự động |
-| `MUTE_PLAYER` | C→S | `Long` (targetUserId) | Chỉ áp dụng phía client gửi |
+| `AUTH_RESP` | `0x15` | `AuthResult` | Trả về kết quả đăng nhập / đăng ký thành công |
+| `ROOM_SNAPSHOT` | `0x16` | `RoomSnapshot` | Trạng thái toàn bộ bàn (chủ bàn, danh sách ghế, cược) |
+| `GAME_STATE_SNAPSHOT` | `0x17` | `GameStateSnapshot` | Tiến trình ván bài, người đang có lượt, thời gian |
+| `PLAYER_STATE_SNAPSHOT` | `0x18` | `PlayerStateSnapshot` | Bài riêng của người chơi và số dư cá nhân |
+| `BET_STATE_SNAPSHOT` | `0x19` | `BetStateSnapshot` | Tổng tiền cược trên bàn, cược của từng người |
+| `ROUND_RESULT` | `0x1A` | `RoundResult` | Kết quả ván bài (thắng/thua, bài lật, điểm cộng/trừ) |
+| `ROOM_CHAT_EVENT` | `0x1B` | `RoomChatEvent` | Broadcast tin nhắn chat trong phòng |
+| `PROFILE_RESP` | `0x1C` | `ProfileResult` | Thông tin hồ sơ, thống kê thắng/thua |
+| `PAGE_RESULT` | `0x1D` | `PageResult<?>` | Dữ liệu danh sách phân trang (Lịch sử hoặc BXH) |
+| `PLAY_AGAIN_PROMPT` | `0x1E` | `PlayAgainPrompt` | Hộp thoại nhắc nhở chơi tiếp sau ván |
+| `ERROR_RESP` | `0x28` | `ErrorCode` | Thông báo lỗi nghiệp vụ hoặc kỹ thuật |
+| `HEARTBEAT_PONG` | `0x2B` | `null` | Phản hồi xác nhận kết nối còn sống |
 
-### 2.9 Dữ liệu / Thống kê
+### 3.3. Nhóm Giao Thức Quản Trị Viên (Admin Protocol)
+| PacketType | Mã Hex | Chiều | Payload Type | Mô tả chức năng |
+|---|---|---|---|---|
+| `ADMIN_STATS_REQ` | `0x2D` | C $\rightarrow$ S | `null` | Yêu cầu lấy số liệu thống kê tổng quan hệ thống |
+| `ADMIN_STATS_RESP` | `0x2E` | S $\rightarrow$ C | `AdminStatsSnapshot` | Trả về tổng user, online, bàn chạy, số dư, ván đấu |
+| `ADMIN_USERS_PAGE_REQ` | `0x2F` | C $\rightarrow$ S | `AdminUserFilterRequest` | Yêu cầu danh sách tài khoản kèm bộ lọc tìm kiếm & phân trang |
+| `ADMIN_USERS_PAGE_RESP` | `0x30` | S $\rightarrow$ C | `PageResult<AdminUserItem>` | Trả về trang dữ liệu danh sách người dùng cho Admin |
+| `ADMIN_LOCK_USER_REQ` | `0x31` | C $\rightarrow$ S | `AdminLockUserRequest` | Yêu cầu khóa (`BLOCKED`) hoặc mở khóa (`ACTIVE`) tài khoản |
+| `ADMIN_ADJUST_BALANCE_REQ`| `0x32` | C $\rightarrow$ S | `AdminAdjustBalanceRequest` | Cộng/trừ điểm số người dùng kèm lý do kiểm toán |
+| `ADMIN_ROOMS_MONITOR_REQ` | `0x33` | C $\rightarrow$ S | `null` | Yêu cầu giám sát chi tiết trạng thái 20 bàn chơi |
+| `ADMIN_ROOMS_MONITOR_RESP`| `0x34` | S $\rightarrow$ C | `List<AdminRoomDetail>` | Trả về danh sách chi tiết 20 bàn chơi kèm pot và người chơi |
+| `ADMIN_FORCE_RESET_ROOM` | `0x35` | C $\rightarrow$ S | `AdminResetRoomRequest` | Buộc đặt lại bàn bị treo hoặc có tranh chấp |
+| `ADMIN_BROADCAST_REQ` | `0x36` | C $\rightarrow$ S | `AdminBroadcastRequest` | Phát thông báo khẩn cấp tới tất cả bàn chơi đang mở |
+| `ADMIN_LEDGER_PAGE_REQ` | `0x37` | C $\rightarrow$ S | `PageRequest` | Yêu cầu tra cứu sổ cái tài chính tổng thể có phân trang |
+| `ADMIN_LEDGER_PAGE_RESP` | `0x38` | S $\rightarrow$ C | `PageResult<AdminLedgerItem>` | Trả về trang dữ liệu sổ cái biến động số dư và điều chỉnh |
 
-| PacketType | Chiều | Payload |
+---
+
+## 4. Các Luồng Tuần Tự (Sequence Diagrams)
+
+### 4.1. Luồng Xác Thực (Login / Register)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    Client->>Server: Packet(LOGIN_REQ, AuthRequest("player1", "secret123"))
+    Server->>Server: Kiểm tra thông tin & băm mật khẩu PBKDF2
+    alt Đăng nhập thành công
+        Server-->>Client: Packet(AUTH_RESP, AuthResult)
+        Server-->>Client: Packet(ROOM_SNAPSHOT, List<RoomSnapshot>) [Cập nhật sảnh]
+    else Sai thông tin hoặc tài khoản bị khóa
+        Server-->>Client: Packet(ERROR_RESP, ErrorCode.INVALID_CREDENTIALS)
+    end
+```
+
+### 4.2. Luồng Bàn Chơi & Vòng Cược
+
+```mermaid
+sequenceDiagram
+    autonumber
+    Client A->>Server: Packet(READY_REQ)
+    Client B->>Server: Packet(READY_REQ)
+    Host (A)->>Server: Packet(START_GAME_REQ)
+    Server->>Server: Trừ tiền cược cơ bản (Ante) & Chia 3 lá bài ngẫu nhiên
+    Server-->>Client A: Packet(PLAYER_STATE_SNAPSHOT, 3 lá bài của A)
+    Server-->>Client B: Packet(PLAYER_STATE_SNAPSHOT, 3 lá bài của B)
+    Server-->>Tất cả: Packet(GAME_STATE_SNAPSHOT, currentTurn=A)
+
+    Note over Client A, Server: Lượt của A (Tối đa 30s)
+    Client A->>Server: Packet(GAME_ACTION_REQ, BetAction.RAISE, 50)
+    Server-->>Tất cả: Packet(BET_STATE_SNAPSHOT, pot=70, highBet=50)
+    Server-->>Tất cả: Packet(GAME_STATE_SNAPSHOT, currentTurn=B)
+
+    Note over Client B, Server: Lượt của B
+    Client B->>Server: Packet(GAME_ACTION_REQ, BetAction.CALL, null)
+    Server->>Server: Xác định kết thúc vòng cược -> Tiến hành so bài
+```
+
+### 4.3. Luồng Kết Thúc & So Bài (Showdown)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    Server->>Server: HandEvaluator tính điểm & phân loại bài
+    Server->>Server: Phân chia Main Pot & Side Pots
+    Server->>Server: WAL ghi kết quả & Giao dịch DB cập nhật số dư
+    Server-->>Tất cả: Packet(ROUND_RESULT, bài lật & điểm cộng/trừ)
+    Note over Client A, Client B: Màn hình hiển thị kết quả trong 6 giây
+    Server-->>Tất cả: Packet(ROOM_SNAPSHOT, status="WAITING")
+```
+
+### 4.4. Luồng Quản Trị Viên (Admin Flow)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    Admin->>Server: Packet(LOGIN_REQ, AuthRequest("admin", "admin@123"))
+    Server->>Server: Xác thực PBKDF2 & Kiểm tra role = "ADMIN"
+    Server-->>Admin: Packet(AUTH_RESP, AuthResult[role="ADMIN"])
+    Admin->>Server: Packet(ADMIN_STATS_REQ)
+    Server-->>Admin: Packet(ADMIN_STATS_RESP, AdminStatsSnapshot)
+    Admin->>Server: Packet(ADMIN_LOCK_USER_REQ, AdminLockUserRequest(userId=5, blocked=true))
+    Server->>Server: requireAdminUser() -> UserBUS.updateUserStatus(5, "BLOCKED")
+    Server-->>Admin: Packet(ADMIN_STATS_RESP, AdminStatsSnapshot)
+    Admin->>Server: Packet(ADMIN_BROADCAST_REQ, "Máy chủ bảo trì sau 10 phút")
+    Server-->>Tất cả người chơi: Packet(ROOM_CHAT_EVENT, "[HỆ THỐNG]: Máy chủ bảo trì...")
+```
+
+---
+
+## 5. Bảng Danh Mục Mã Lỗi (ErrorCode)
+
+| ErrorCode | Nhóm | Ý nghĩa |
 |---|---|---|
-| `GET_HISTORY` | C→S | `PageRequest` |
-| `HISTORY_RESULT` | S→C\* | `PageResult<GameHistoryItem>` |
-| `GET_LEADERBOARD` | C→S | `PageRequest` |
-| `LEADERBOARD_RESULT` | S→C\* | `PageResult<LeaderboardItem>` |
-
----
-
-## 3. Định Nghĩa Payload Chi Tiết
-
-> Tất cả record/class phải `implements Serializable` với `serialVersionUID = 1L`.  
-> String dùng UTF-8. Thời gian dùng epoch millisecond từ đồng hồ **server**.
-
----
-
-### 3.1 Auth
-
-#### `AuthRequest` — dùng cho LOGIN
-```
-username : String   (3–50 ký tự, chỉ chữ/số/dấu gạch dưới)
-password : String   (plain text — server hash; KHÔNG log lại)
-```
-
-#### `RegisterRequest` — dùng cho REGISTER  
-```
-username    : String
-password    : String
-displayName : String  (tùy chọn, nếu null dùng username)
-email       : String  (tùy chọn)
-```
-
-#### `AuthResult` — server trả cho LOGIN / REGISTER
-```
-success     : boolean
-userId      : Long    (null nếu thất bại)
-username    : String
-displayName : String
-balance     : BigDecimal
-errorCode   : ErrorCode  (null nếu thành công)
-message     : String     (hiển thị cho người dùng)
-```
-
-> ⚠️ `AuthResult` **không được chứa** password hash, salt, hoặc bất kỳ thông tin bảo mật nào.
-
----
-
-### 3.2 Hồ sơ
-
-#### `ProfileResult`
-```
-userId      : long
-username    : String
-displayName : String
-email       : String
-avatarUrl   : String
-balance     : BigDecimal
-totalGames  : int
-totalWins   : int
-totalLosses : int
-```
-
-#### `UpdateProfileRequest`
-```
-displayName : String  (null = không đổi)
-email       : String  (null = không đổi)
-avatarUrl   : String  (null = không đổi)
-```
-
-#### `ChangePasswordRequest`
-```
-currentPassword : String
-newPassword     : String
-```
-
----
-
-### 3.3 Lobby
-
-#### `RoomSummary` — phần tử trong `ROOM_LIST_RESULT`
-```
-roomId      : long
-roomCode    : String
-roomName    : String
-status      : String  (WAITING / PLAYING)
-playerCount : int
-maxPlayers  : int
-betAmount   : BigDecimal
-```
-
----
-
-### 3.4 Quản lý phòng
-
-#### `CreateRoomRequest`
-```
-roomName   : String        (1–100 ký tự)
-minPlayers : int           (2–8)
-maxPlayers : int           (minPlayers–8)
-betAmount  : BigDecimal    (> 0)
-```
-
-#### `JoinRoomRequest`
-```
-roomId : long
-```
-
-#### `RoomSnapshot` — payload của `ROOM_UPDATED`
-```
-roomId       : long
-roomCode     : String
-roomName     : String
-status       : String   (WAITING / PLAYING / FINISHED)
-ownerUserId  : long
-minPlayers   : int
-maxPlayers   : int
-betAmount    : BigDecimal
-players      : List<PlayerSlot>
-stateVersion : long     // tăng sau mỗi thay đổi — client bỏ qua bản cũ hơn
-```
-
-#### `PlayerSlot` — phần tử trong `RoomSnapshot.players`
-```
-userId      : long
-displayName : String
-seatNumber  : int      (1–8)
-ready       : boolean
-status      : String   (PLAYING / SPECTATOR / LEFT)
-```
-
----
-
-### 3.5 Ván chơi
-
-#### `GameStartInfo` — payload của `START_GAME`
-```
-roundId    : String   (UUID — duy nhất, bất biến trong suốt ván)
-roomId     : long
-playerIds  : List<Long>   (thứ tự ngồi)
-startedAt  : long         (epoch milli, đồng hồ server)
-```
-
-#### `DealCardPayload` — payload của `DEAL_CARD` (chỉ gửi riêng)
-```
-roundId : String
-cards   : List<Card>  (đúng 3 lá)
-```
-
-> 🔒 Server KHÔNG BAO GIỜ gửi `DealCardPayload` qua broadcast.  
-> Client nhận được bài của mình qua kênh riêng này.
-
-#### `GameActionRequest` — payload của `GAME_ACTION`
-```
-roundId      : String
-action       : BetAction   (RAISE / CALL / FOLD / ALL_IN)
-raiseAmount  : BigDecimal  (chỉ có ý nghĩa khi action = RAISE; null nếu khác)
-```
-
-#### `GameStateSnapshot` — payload của `GAME_UPDATED`
-```
-roundId          : String
-phase            : String        (BETTING / SHOWDOWN / FINISHED)
-currentTurnUserId: Long          (null nếu không có lượt cụ thể)
-activePlayers    : List<Long>    (userId của người chưa fold/left)
-stateVersion     : long
-```
-
-#### `BetStateSnapshot` — payload của `BET_UPDATED`
-```
-roundId           : String
-currentTurnUserId : Long
-currentHighBet    : BigDecimal
-mainPot           : BigDecimal
-sidePots          : List<SidePot>
-playerBets        : List<PlayerBetInfo>
-stateVersion      : long
-```
-
-#### `PlayerBetInfo` — phần tử trong `BetStateSnapshot`
-```
-userId      : long
-displayName : String
-currentBet  : BigDecimal
-folded      : boolean
-allIn       : boolean
-```
-
-#### `PlayerStateSnapshot` — payload của `PLAYER_STATE` (chỉ gửi riêng)
-```
-roundId      : String
-myCards      : List<Card>      (bài của người nhận — bí mật)
-myBalance    : BigDecimal      (số dư hiện tại)
-myCurrentBet : BigDecimal
-stateVersion : long
-```
-
-#### `SidePot`
-```
-amount           : BigDecimal
-eligiblePlayerIds: List<Long>
-```
-
----
-
-### 3.6 Chơi tiếp
-
-#### `PlayAgainPrompt`
-```
-roundId     : String
-timeoutSecs : int      (thời gian chờ vote)
-votes       : Map<Long, Boolean>   // userId → wantPlayAgain
-```
-
----
-
-### 3.7 Kết quả ván
-
-#### `RoundResult` — payload của `ROUND_RESULT`
-```
-roundId       : String
-playerResults : List<PlayerResult>   (sắp xếp theo rank từ cao xuống)
-betHistory    : List<BetRecord>      (lịch sử tố — theo sequenceNo tăng dần)
-sidePots      : List<SidePot>        (rỗng nếu không có ALL_IN)
-roundStatus   : String   (FINISHED / CANCELLED)
-endedAtMillis : long     (đồng hồ server)
-```
-
-> 📌 `betHistory` và `sidePots` dành cho GameBUS lưu DB và UI hiển thị replay/tóm tắt.  
-> Client có thể bỏ qua `betHistory` nếu chỉ cần hiện kết quả cuối.
-
-#### `PlayerResult` — phần tử trong `RoundResult`
-```
-userId      : long
-username    : String
-displayName : String
-hand        : Hand         (null nếu FOLD trước showdown)
-rank        : int          (1 = thắng; 0 = không xếp hạng)
-result      : String       (WIN / LOSE / DRAW / FOLD)
-profit      : BigDecimal   (dương = thắng, âm = thua)
-```
-
-#### `BetRecord` — phần tử trong `RoundResult.betHistory`
-```
-userId           : long
-targetUserId     : Long         (null = tố toàn bàn)
-action           : BetAction    (RAISE / CALL / FOLD / ALL_IN / ANTE)
-raisedPoint      : BigDecimal   (mức cược tích lũy sau action)
-raiseAmount      : BigDecimal   (số điểm tăng thêm; 0 nếu CALL/FOLD)
-multiplierBefore : BigDecimal   (hệ số nhân trước action)
-multiplierAfter  : BigDecimal   (hệ số nhân sau action)
-sequenceNo       : int          (thứ tự action trong ván, bắt đầu từ 1)
-createdAtMillis  : long
-```
-
----
-
-### 3.8 Chat
-
-#### `ChatMessage`
-```
-senderId          : Long     (null nếu SYSTEM)
-senderDisplayName : String   (null nếu SYSTEM)
-content           : String   (tối đa 500 ký tự)
-type              : String   (TEXT / EMOJI / SYSTEM)
-timestampMillis   : long     (đồng hồ server — client không tự điền)
-```
-
----
-
-### 3.9 Dữ liệu / Thống kê
-
-#### `PageRequest`
-```
-page     : int   (bắt đầu từ 0; âm → lỗi INVALID_PAGE)
-pageSize : int   (mặc định 20; tối đa 100; vượt quá → lỗi INVALID_PAGE)
-```
-
-#### `PageResult<T>`
-```
-items      : List<T>
-page       : int
-pageSize   : int
-totalItems : long
-totalPages : int
-```
-
-#### `GameHistoryItem` — phần tử của `HISTORY_RESULT`
-```
-gameId      : long
-roundId     : String
-roomName    : String
-result      : String       (WIN / LOSE / DRAW / FOLD / CANCELLED)
-profit      : BigDecimal
-handType    : String       (SAP / LIENG / BO_DOI / DIEM)
-playedAt    : long         (epoch milli)
-```
-
-#### `LeaderboardItem` — phần tử của `LEADERBOARD_RESULT`
-```
-rank        : int
-userId      : long
-displayName : String
-totalPoints : BigDecimal   (tổng điểm tích lũy)
-totalWins   : int
-totalGames  : int
-```
-
-> Sắp xếp: `totalPoints DESC` → `totalWins DESC` → `userId ASC` (ổn định).
-
----
-
-### 3.10 Lỗi
-
-#### `ErrorPayload` — payload của `ERROR`
-```
-code    : ErrorCode   (enum — UI chỉ so sánh code, không so sánh message)
-message : String      (hiển thị cho người dùng hoặc log)
-```
-
----
-
-## 4. Mã Lỗi (ErrorCode)
-
-| Mã | Khi nào xảy ra |
-|---|---|
-| `INVALID_REQUEST` | Request sai định dạng, thiếu field bắt buộc, hoặc payload sai kiểu |
-| `UNAUTHENTICATED` | Chưa đăng nhập mà dùng chức năng cần xác thực |
-| `FORBIDDEN` | Đã đăng nhập nhưng không có quyền (ví dụ không phải chủ phòng) |
-| `INTERNAL_ERROR` | Lỗi phía server — không lộ stack trace cho client |
-| `USERNAME_EXISTS` | Đăng ký trùng username |
-| `INVALID_CREDENTIALS` | Sai username hoặc mật khẩu khi đăng nhập |
-| `ALREADY_LOGGED_IN` | Tài khoản đang có phiên khác hoạt động |
-| `USER_BLOCKED` | Tài khoản bị khóa |
-| `ROOM_NOT_FOUND` | roomId không tồn tại hoặc phòng đã đóng |
-| `ROOM_FULL` | Phòng đã đủ maxPlayers |
-| `ROOM_NOT_WAITING` | Phòng đang chơi, không thể vào |
-| `ALREADY_IN_ROOM` | Người dùng đang ở phòng khác |
-| `NOT_IN_ROOM` | Yêu cầu cần ở trong phòng mà chưa vào |
-| `NOT_ROOM_OWNER` | Cần là chủ phòng để thực hiện thao tác |
-| `NOT_ENOUGH_PLAYERS` | Chưa đủ minPlayers để bắt đầu ván |
-| `NOT_ALL_READY` | Có người chưa bấm sẵn sàng |
-| `INVALID_STATE` | Hành động sai trạng thái hiện tại (ví dụ FOLD khi ván chưa bắt đầu) |
-| `STALE_ROUND` | roundId trong request không khớp với ván đang chạy |
-| `NOT_YOUR_TURN` | Chưa đến lượt người chơi này đặt cược |
-| `INVALID_BET_AMOUNT` | Mức cược âm, bằng 0, hoặc vượt quá số dư |
-| `MESSAGE_TOO_LONG` | Nội dung chat vượt 500 ký tự |
-| `RATE_LIMIT_EXCEEDED` | Gửi quá 5 tin nhắn trong 10 giây |
-| `INVALID_PAGE` | Số trang âm hoặc pageSize không hợp lệ |
-
----
-
-## 5. Luồng Chính (Flow)
-
-### 5.1 Đăng nhập
-
-```
-Client                          Server
-  │                               │
-  │── LOGIN {username, password} ─►│
-  │                               │── UserBUS.authenticate()
-  │                               │   ├─ OK  → gắn userId vào session
-  │◄─ AUTH_RESULT {success=true} ──│   └─ FAIL → không gắn
-  │                               │
-  │  (nếu sai thông tin)          │
-  │◄─ AUTH_RESULT {success=false, │
-  │    errorCode=INVALID_CREDENTIALS}
-```
-
-**Quy tắc:**
-- Server **không tin** `userId` do client tự khai trong payload. Danh tính lấy từ session sau khi xác thực.
-- Nếu tài khoản đã có phiên → trả `ALREADY_LOGGED_IN`, không đá phiên cũ.
-- Sau `LOGOUT` hoặc mất kết nối → giải phóng phiên ngay.
-
----
-
-### 5.2 Tạo phòng và bắt đầu ván
-
-```
-Client A (chủ)        Server                  Client B
-    │                   │                        │
-    │── CREATE_ROOM ───►│                        │
-    │◄─ ACK ────────────│                        │
-    │◄─ ROOM_UPDATED ───│                        │
-    │                   │                        │
-    │                   │◄──── JOIN_ROOM ─────────│
-    │◄─ ROOM_UPDATED ───│──── ROOM_UPDATED ──────►│
-    │                   │                        │
-    │── SET_READY ─────►│                        │
-    │◄─ ROOM_UPDATED ───│──── ROOM_UPDATED ──────►│
-    │                   │◄──── SET_READY ─────────│
-    │◄─ ROOM_UPDATED ───│──── ROOM_UPDATED ──────►│
-    │                   │                        │
-    │── START_GAME_REQUEST ►│                    │
-    │                   │── GameEngine.initRound()
-    │◄─ START_GAME ─────│──── START_GAME ────────►│
-    │◄─ DEAL_CARD* ─────│                        │
-    │                   │──────────── DEAL_CARD* ─►│
-```
-
-**Quy tắc:**
-- `DEAL_CARD` gửi **riêng từng client** — không bao giờ broadcast.
-- Server kiểm tra: chủ phòng, đủ minPlayers, tất cả đã sẵn sàng.
-- `stateVersion` trong `ROOM_UPDATED` tăng sau mỗi thay đổi.
-
----
-
-### 5.3 Vòng đặt cược
-
-```
-Client A                Server               Client B
-    │                     │                     │
-    │                     │──── BET_UPDATED ────►│  (lượt A)
-    │◄─── BET_UPDATED ────│                     │
-    │                     │                     │
-    │── GAME_ACTION(RAISE,50) ►│               │
-    │                     │── GameEngine.handleAction()
-    │◄─ GAME_UPDATED ─────│──── GAME_UPDATED ──►│
-    │◄─ BET_UPDATED ──────│──── BET_UPDATED ───►│  (lượt B)
-    │◄─ PLAYER_STATE* ────│                     │
-    │                     │──────── PLAYER_STATE* ►│
-    │                     │                     │
-    │  (B fold)           │◄── GAME_ACTION(FOLD) ──│
-    │                     │── GameEngine.handleAction()
-    │◄─ GAME_UPDATED ─────│──── GAME_UPDATED ──►│
-    │◄─ ROUND_RESULT ─────│──── ROUND_RESULT ──►│
-```
-
-**Quy tắc:**
-- Kiểm tra `roundId` mỗi action — từ chối nếu không khớp (`STALE_ROUND`).
-- Cập nhật cùng một phòng phải **tuần tự hóa** (synchronized hoặc single-thread executor).
-- `PLAYER_STATE` gửi riêng — chứa bài của người nhận.
-- Server lấy `userId` từ session, **không** lấy từ payload của client.
-
----
-
-### 5.4 Mất kết nối giữa ván
-
-```
-Client A (mất mạng)     Server              Client B
-    │                     │                    │
-    ×  (EOF / timeout)    │                    │
-                          │ detect mất kết nối  │
-                          │── GameEngine.handlePlayerLeft(userId)
-                          │                    │
-                          │──── CHAT_SYSTEM ──►│  "Player A đã mất kết nối"
-                          │──── GAME_UPDATED ─►│  (nếu còn đủ người tiếp tục)
-                          │  hoặc              │
-                          │──── ROUND_RESULT ─►│  (nếu không đủ người → CANCELLED)
-```
-
-**Quy tắc:**
-- Đường dọn trạng thái **thống nhất** cho cả EOF, timeout, `LOGOUT`, `LEAVE_ROOM`.
-- Không phát `ROOM_UPDATED` hoặc `CHAT_SYSTEM` nhiều hơn một lần cho cùng một sự kiện rời.
-- Ván `CANCELLED` không cộng điểm, nhưng lịch sử tham gia vẫn được lưu.
-
----
-
-### 5.5 Heartbeat
-
-```
-Server                  Client
-  │                       │
-  │──── PING ────────────►│   (mỗi 5 giây)
-  │◄─── PONG ─────────────│   (phải trả trong 15 giây)
-  │                       │
-  │ (không nhận PONG sau 15s)
-  │── đóng kết nối, dọn trạng thái
-```
-
-**Quy tắc:**
-- Không phân biệt "người dùng im lặng" với "mất kết nối" — PING là cơ chế duy nhất.
-- Client **không** gửi PING — chỉ server gửi PING, client trả PONG.
-
----
-
-## 6. Quy Tắc Bảo Mật
-
-1. **Dữ liệu riêng chỉ gửi đúng người.** `DEAL_CARD`, `PLAYER_STATE` — chỉ gửi qua `ObjectOutputStream` của đúng client đó.
-2. **Không broadcast trạng thái nội bộ Game Engine.** Có thể chứa bài chưa lật của người khác.
-3. **Không log payload nhạy cảm.** Đặc biệt là password, hash, nội dung `AuthRequest`.
-4. **Thời gian từ đồng hồ server.** Chat timestamp, thời gian ván — client không được tự điền.
-5. **Kiểm tra kiểu payload.** Mỗi `PacketType` chỉ chấp nhận đúng kiểu tương ứng — sai kiểu → đóng kết nối.
-6. **Giới hạn kích thước.** Packet vượt quá ngưỡng hợp lý → đóng kết nối, không để tràn bộ nhớ.
-
----
-
-## 7. Cấu Hình Mặc Định (Tham Chiếu Nhanh)
-
-| Tham số | Giá trị | Nơi cấu hình |
-|---|---|---|
-| Server port | `8888` | `server.properties` |
-| Max connections | `100` | `server.properties` |
-| Heartbeat interval | `5s` | `server.properties` |
-| Heartbeat timeout | `15s` | `server.properties` |
-| Số người / phòng | `2–8` | `server.properties` + server check |
-| Chat max length | `500 ký tự` | `server.properties` |
-| Chat rate limit | `5 tin / 10 giây` | `server.properties` |
-| Connection timeout (client) | `5s` | `client.properties` |
-| Phân trang mặc định | `20` / tối đa `100` | `server.properties` |
-| Encoding | `UTF-8` (Java) / `utf8mb4` (MySQL) | Mặc định |
-
----
-
-## 8. Lịch Sử Thay Đổi
-
-| Phiên bản | Ngày | Nội dung | Người thực hiện |
-|---|---|---|---|
-| 1.0 | 2026-09-25 | Tạo ban đầu — đủ 9 nhóm thông điệp, payload chi tiết, 5 luồng chính | Khánh |
-| 1.1 | 2026-10-13 | M3: `betAmount` tuỳ chọn (null = không đặt cược); thêm `checkStart` vào `RoomService`; sửa `RoomSnapshot.status` dùng `r.state` động thay vì hardcode "WAITING"; thêm kiểm tra `ROOM_NOT_WAITING` khi join; sửa `PlayerSlot.status` thành "ACTIVE" | Khánh |
-
-> Mọi thay đổi payload hoặc PacketType phải thêm dòng vào bảng này và cập nhật `PROTOCOL_VERSION` trong `Packet.java` nếu breaking change.
-
-## Quy ước bản ghép M1–M3
-
-- Packet.VERSION là số nguyên 1 theo code nền.
-- shared/server/client phải được build và cập nhật cùng bản.
-- REGISTER: AUTH_RESULT; không tự đăng nhập.
-- LOGIN: gắn phiên trước AUTH_RESULT; lỗi nghiệp vụ trả ERROR.
-- LOGOUT: dọn phòng và phiên rồi ACK; giữ socket mở.
-- ROOM_LIST: ROOM_LIST_RESULT.
-- CREATE_ROOM/JOIN_ROOM/SET_READY:
-  phản hồi ROOM_UPDATED giữ requestId;
-  broadcast ROOM_UPDATED dùng requestId null.
-- LEAVE_ROOM: ACK; cập nhật và thông báo cho người còn lại.
-- Client gửi CHAT_MESSAGE bằng ChatMessage TEXT.
-- Server phát CHAT_MESSAGE/CHAT_SYSTEM bằng RoomChatEvent(roomId, message).
-- Server xác định người gửi, tên, phòng và thời gian.
-- Chat thành công có ACK riêng cho người gửi.
-- Chat tối đa 500 ký tự, 5 tin/10 giây/user.
-- Request chat giới hạn cấu trúc 2000 ký tự;
-  quá 500 trả MESSAGE_TOO_LONG từ nghiệp vụ.
-- Client bỏ snapshot cũ theo roomId/stateVersion.
-- Chủ phòng rời: chuyển cho người còn lại vào sớm nhất.
-- Phòng trống bị xóa; phòng M3 được giữ trong RAM.
-- START_GAME_REQUEST kiểm tra quyền và sẵn sàng;
-  chưa ghép Engine M4 thì trả NOT_IMPLEMENTED.
+| `SUCCESS` | Chung | Thao tác thực hiện thành công |
+| `INTERNAL_ERROR` | Chung | Lỗi máy chủ không xác định |
+| `INVALID_PAYLOAD` | Chung | Dữ liệu gói tin không đúng định dạng |
+| `FORBIDDEN` | Phân quyền | Không có quyền thực hiện thao tác (chỉ dành cho Admin) |
+| `INVALID_CREDENTIALS` | Xác thực | Tên đăng nhập hoặc mật khẩu không chính xác |
+| `USERNAME_ALREADY_EXISTS` | Xác thực | Tên tài khoản đã có người sử dụng |
+| `USER_NOT_FOUND` | Xác thực | Tài khoản không tồn tại |
+| `SESSION_EXPIRED` | Xác thực | Phiên làm việc đã hết hạn hoặc bị ngắt |
+| `ALREADY_LOGGED_IN` | Xác thực | Tài khoản đang được đăng nhập ở thiết bị khác |
+| `PASSWORD_TOO_WEAK` | Xác thực | Mật khẩu không đáp ứng độ an toàn (tối thiểu 8 ký tự) |
+| `ROOM_FULL` | Bàn chơi | Bàn đã đủ số lượng người chơi tối đa (8 người) |
+| `ROOM_NOT_FOUND` | Bàn chơi | Bàn chơi không tồn tại |
+| `NOT_ROOM_OWNER` | Bàn chơi | Thao tác chỉ dành cho chủ bàn (Bắt đầu, đổi mức cược) |
+| `GAME_ALREADY_STARTED` | Bàn chơi | Bàn đang trong ván, không thể tham gia giữa chừng |
+| `NOT_ENOUGH_PLAYERS` | Bàn chơi | Cần tối thiểu 2 người sẵn sàng để bắt đầu |
+| `NOT_ENOUGH_BALANCE` | Bàn chơi / Cược | Số dư tài khoản không đủ để vào bàn hoặc đặt cược |
+| `NOT_YOUR_TURN` | Vòng cược | Chưa đến lượt hành động của bạn |
+| `INVALID_BET_AMOUNT` | Vòng cược | Mức cược không hợp lệ (thấp hơn mức cược cao nhất) |
+| `INVALID_GAME_ACTION` | Vòng cược | Hành động cược không được phép ở trạng thái hiện tại |
+| `TURN_TIMEOUT` | Vòng cược | Quá 30 giây suy nghĩ, hệ thống tự động úp bài |
+| `VALIDATION_FAILED` | Ràng buộc | Dữ liệu nhập vào vi phạm quy tắc hệ thống |

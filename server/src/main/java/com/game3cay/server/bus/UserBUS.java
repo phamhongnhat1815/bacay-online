@@ -1,99 +1,92 @@
 package com.game3cay.server.bus;
 
-import com.game3cay.shared.network.ErrorCode;
+import com.game3cay.shared.model.AdminLedgerItem;
+import com.game3cay.shared.model.AdminStatsSnapshot;
+import com.game3cay.shared.model.AdminUserItem;
+import com.game3cay.shared.model.PageResult;
+import java.math.BigDecimal;
 
 /**
- * Hợp đồng BUS cho nghiệp vụ người dùng — do <b>Nhật</b> triển khai (module D03).
- *
- * <p><b>Khánh</b> (N03) gọi các phương thức này từ handler xử lý packet
- * {@code LOGIN}, {@code REGISTER}, {@code GET_PROFILE}, {@code UPDATE_PROFILE},
- * {@code CHANGE_PASSWORD}.
- *
- * <h2>Quy tắc ErrorCode</h2>
- * <ul>
- *   <li>{@link ErrorCode#USERNAME_EXISTS} — {@link #register} khi username đã tồn tại</li>
- *   <li>{@link ErrorCode#INVALID_CREDENTIALS} — {@link #authenticate} khi sai username/password</li>
- *   <li>{@link ErrorCode#USER_BLOCKED} — tài khoản bị khóa</li>
- *   <li>{@link ErrorCode#FORBIDDEN} — đổi mật khẩu nhưng mật khẩu hiện tại sai</li>
- *   <li>{@link ErrorCode#INTERNAL_ERROR} — lỗi DB không lường trước</li>
- * </ul>
- *
- * <h2>Quy tắc triển khai (Nhật)</h2>
- * <ul>
- *   <li>Hash mật khẩu bằng {@code PasswordUtil.hash()} trong {@code shared/security/}.</li>
- *   <li>Verify bằng {@code PasswordUtil.verify()} — không tự viết lại.</li>
- *   <li>Không trả về thông tin password_hash trong {@link UserDTO}.</li>
- *   <li>Mỗi thao tác JDBC dùng connection riêng và đóng bằng try-with-resources.
- *       UNIQUE username trong DB bảo vệ đăng ký đồng thời; chưa dùng connection pool.</li>
- * </ul>
+ * Giao diện dịch vụ nghiệp vụ người dùng và tài khoản.
  */
 public interface UserBUS {
 
     /**
-     * Đăng ký tài khoản mới.
+     * Đăng ký tài khoản người chơi mới.
      *
-     * @param username    3–50 ký tự, chỉ chữ/số/gạch dưới
-     * @param rawPassword mật khẩu plain text (BUS tự hash, không lưu plain text)
-     * @param displayName tên hiển thị (null → dùng username)
-     * @param email       email (null → bỏ qua)
-     * @return {@link UserDTO} của tài khoản vừa tạo
-     * @throws BUSException {@link ErrorCode#USERNAME_EXISTS} nếu username đã tồn tại;
-     *                      {@link ErrorCode#INTERNAL_ERROR} nếu lỗi DB
+     * @param username    tên đăng nhập (3–50 ký tự: chữ cái, chữ số, gạch dưới)
+     * @param rawPassword mật khẩu thô của người dùng (tự động được băm an toàn)
+     * @param displayName tên hiển thị (nếu để trống tự động lấy theo username)
+     * @param email       địa chỉ email (tùy chọn)
+     * @return {@link UserDTO} thông tin tài khoản vừa tạo
+     * @throws BUSException nếu username đã tồn tại hoặc dữ liệu không hợp lệ
      */
-    UserDTO register(String username, String rawPassword,
-                     String displayName, String email) throws BUSException;
+    UserDTO register(String username, String rawPassword, String displayName, String email) throws BUSException;
 
     /**
-     * Xác thực đăng nhập.
+     * Xác thực thông tin đăng nhập.
      *
-     * @return {@link UserDTO} nếu thành công
-     * @throws BUSException {@link ErrorCode#INVALID_CREDENTIALS} nếu sai;
-     *                      {@link ErrorCode#USER_BLOCKED} nếu bị khóa
+     * @param username    tên đăng nhập
+     * @param rawPassword mật khẩu thô
+     * @return {@link UserDTO} nếu thông tin chính xác
+     * @throws BUSException nếu sai thông tin hoặc tài khoản bị khóa
      */
     UserDTO authenticate(String username, String rawPassword) throws BUSException;
 
     /**
-     * Lấy hồ sơ người dùng theo userId.
+     * Lấy thông tin hồ sơ người dùng theo ID.
      *
-     * @throws BUSException {@link ErrorCode#INTERNAL_ERROR} nếu không tìm thấy hoặc lỗi DB
+     * @param userId mã ID người dùng
+     * @return {@link UserDTO} hồ sơ người dùng
+     * @throws BUSException nếu không tìm thấy người dùng
      */
     UserDTO getProfile(long userId) throws BUSException;
 
     /**
-     * Cập nhật thông tin hồ sơ. Trường nào {@code null} → giữ nguyên.
+     * Cập nhật thông tin hồ sơ cá nhân.
      *
-     * @throws BUSException {@link ErrorCode#INTERNAL_ERROR} nếu lỗi DB
+     * @param userId      mã ID người dùng
+     * @param displayName tên hiển thị mới (nếu null giữ nguyên)
+     * @param email       email mới (nếu null giữ nguyên)
+     * @param avatarUrl   đường dẫn ảnh đại diện mới (nếu null giữ nguyên)
+     * @throws BUSException nếu dữ liệu không hợp lệ hoặc email đã được dùng
      */
-    void updateProfile(long userId, String displayName,
-                       String email, String avatarUrl) throws BUSException;
+    void updateProfile(long userId, String displayName, String email, String avatarUrl) throws BUSException;
 
     /**
-     * Đổi mật khẩu.
+     * Đổi mật khẩu tài khoản.
      *
-     * @param currentRawPassword mật khẩu hiện tại (để verify)
-     * @param newRawPassword     mật khẩu mới (BUS tự hash)
-     * @throws BUSException {@link ErrorCode#FORBIDDEN} nếu mật khẩu hiện tại sai;
-     *                      {@link ErrorCode#INTERNAL_ERROR} nếu lỗi DB
+     * @param userId             mã ID người dùng
+     * @param currentRawPassword mật khẩu hiện tại
+     * @param newRawPassword     mật khẩu mới (8-128 ký tự)
+     * @throws BUSException nếu mật khẩu cũ không đúng hoặc mật khẩu mới không hợp lệ
      */
-    void changePassword(long userId, String currentRawPassword,
-                        String newRawPassword) throws BUSException;
+    void changePassword(long userId, String currentRawPassword, String newRawPassword) throws BUSException;
+
+    // --- Admin Operations ---
 
     /**
-     * Cập nhật số dư sau ván chơi (ghi transaction).
-     * Khánh không gọi trực tiếp — GameBUS gọi nội bộ hoặc Nhật tự quản.
-     *
-     * <p><b>Quy tắc bắt buộc (Nhật triển khai):</b>
-     * <ol>
-     *   <li>Truy vấn {@code SELECT balance FROM users WHERE id = userId FOR UPDATE} trước.</li>
-     *   <li>Nếu {@code currentBalance + delta < 0} → ném ngay
-     *       {@link ErrorCode#INVALID_BET_AMOUNT} — KHÔNG để DB constraint bắt lỗi thay.</li>
-     *   <li>Ghi {@code transactions} rồi mới {@code UPDATE users SET balance = balance + delta}.</li>
-     *   <li>DB cũng có {@code CHECK (balance >= 0)} làm lớp bảo vệ thứ hai.</li>
-     * </ol>
-     *
-     * @param delta dương = cộng điểm, âm = trừ điểm
-     * @throws BUSException {@link ErrorCode#INVALID_BET_AMOUNT} nếu kết quả sẽ âm;
-     *                      {@link ErrorCode#INTERNAL_ERROR} nếu lỗi DB
+     * Admin tra cứu danh sách người dùng có phân trang và bộ lọc.
      */
-    void updateBalance(long userId, java.math.BigDecimal delta) throws BUSException;
+    PageResult<AdminUserItem> findUsersForAdmin(String query, String statusFilter, int page, int pageSize) throws BUSException;
+
+    /**
+     * Admin khóa hoặc mở khóa tài khoản người dùng.
+     */
+    void updateUserStatusForAdmin(long userId, boolean blocked) throws BUSException;
+
+    /**
+     * Admin điều chỉnh số dư điểm (cộng/trừ) có ghi sổ cái kiểm toán.
+     */
+    void adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason) throws BUSException;
+
+    /**
+     * Admin lấy số liệu thống kê tổng thể toàn hệ thống.
+     */
+    AdminStatsSnapshot getSystemStatsForAdmin(long onlineUsers, int activeRooms) throws BUSException;
+
+    /**
+     * Admin tra cứu nhật ký sổ cái kép phân trang.
+     */
+    PageResult<AdminLedgerItem> getLedgerForAdmin(int page, int pageSize) throws BUSException;
 }

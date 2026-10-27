@@ -23,3 +23,7 @@
 
 # Kết quả build Maven
 **/target/
+# Runtime and packaged outputs
+dist/
+data/
+*.env.ps1

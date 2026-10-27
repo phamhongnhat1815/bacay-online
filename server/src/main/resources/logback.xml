@@ -25,5 +25,5 @@
     </root>
 
     <!-- Debug chi tiết cho package network khi cần trace -->
-    <!-- <logger name="com.bacay.server.network" level="DEBUG"/> -->
+    <!-- <logger name="com.game3cay.server.network" level="DEBUG"/> -->
 </configuration>
