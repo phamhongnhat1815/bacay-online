@@ -95,7 +95,7 @@ public final class MainFrame extends JFrame {
                 g.dispose();
             }
         };
-        session.setOpaque(false);
+        session.setOpaque(true);
 
         var header = new JPanel(new BorderLayout(15, 0));
         header.setBackground(new Color(8, 18, 32));

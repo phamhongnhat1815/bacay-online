@@ -588,6 +588,9 @@ public final class GameTablePanel extends JPanel {
         int step = self ? 68 : 29;
         int cx = (int) (550 + 306 * Math.cos(angle));
         int cy = (int) (365 + 145 * Math.sin(angle));
+        if (self) {
+            cy -= 18; // Nhac 3 la bai cua ban than len mot chut de tranh de len khung ghe
+        }
         int left = cx - (cw + 2 * step) / 2;
         int top = cy - ch / 2;
 

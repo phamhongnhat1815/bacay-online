@@ -64,7 +64,7 @@ public final class GamePanel extends JPanel {
     private final Theme.Button betHalfPot = new Theme.Button("1/2 Pot", "plain");
     private final Theme.Button betPot = new Theme.Button("Pot", "plain");
     private final Theme.Button betMax = new Theme.Button("Max", "plain");
-    private final JPanel quickBetsPanel = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 6, 2));
+    private final JPanel quickBetsPanel = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 6, 0));
 
     private GameStateSnapshot game;
     private PlayerStateSnapshot mine;
@@ -76,8 +76,12 @@ public final class GamePanel extends JPanel {
     private boolean enabled;
     private boolean hidden;
 
-    private final JPanel actionBar = Theme.transparent(new BorderLayout(10, 6));
-    private final JPanel controls = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 9, 0));
+    private final JPanel actionBar = Theme.transparent(new BorderLayout(0, 6));
+    private final JPanel topBar = Theme.transparent(new BorderLayout(10, 0));
+    private final JPanel utilityBar = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+    private final JPanel actionCenterStack = Theme.transparent(new GridLayout(0, 1, 0, 4));
+    private final JPanel bettingBar = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
+
     private final Theme.Glass waitingPanel = new Theme.Glass(new BorderLayout(0, 8));
     private final JLabel waitingTitle = Theme.label("SẴN SÀNG CHO VÁN MỚI", 15, Theme.GOLD);
     private final JLabel waitingBet = Theme.label("", 13, Theme.TEXT);
@@ -92,8 +96,20 @@ public final class GamePanel extends JPanel {
         setOpaque(false);
         add(table, BorderLayout.CENTER);
 
-        actionBar.setBorder(new EmptyBorder(7, 16, 10, 16));
-        actionBar.add(status, BorderLayout.NORTH);
+        actionBar.setBorder(new EmptyBorder(6, 16, 8, 16));
+        actionBar.setPreferredSize(new Dimension(0, 126));
+        eye.setPreferredSize(new Dimension(86, 30));
+        squeezeBtn.setPreferredSize(new Dimension(100, 30));
+        emoteBtn.setPreferredSize(new Dimension(105, 30));
+        eye.setFont(Theme.font(12, true));
+        squeezeBtn.setFont(Theme.font(12, true));
+        emoteBtn.setFont(Theme.font(12, true));
+        utilityBar.add(eye);
+        utilityBar.add(squeezeBtn);
+        utilityBar.add(emoteBtn);
+        topBar.add(status, BorderLayout.WEST);
+        topBar.add(utilityBar, BorderLayout.EAST);
+        actionBar.add(topBar, BorderLayout.NORTH);
 
         waitingPanel.setBorder(new EmptyBorder(12, 12, 12, 12));
         var waitingLabels = Theme.transparent(new GridLayout(0, 1, 0, 4));
@@ -121,7 +137,8 @@ public final class GamePanel extends JPanel {
                     chatSender.accept(emote.toChatText());
                 }
             });
-            popup.showAt(emoteBtn, 0, -popup.getPreferredSize().height - 5);
+            int px = emoteBtn.getWidth() - popup.getPreferredSize().width;
+            popup.showAt(emoteBtn, px, -popup.getPreferredSize().height - 5);
         });
 
         table.setOnSendEmote(emote -> {
@@ -130,17 +147,22 @@ public final class GamePanel extends JPanel {
             }
         });
 
-        for (var component : new JComponent[] {eye, squeezeBtn, emoteBtn, fold, call, allIn, raiseTo, raise}) {
-            controls.add(component);
-        }
+        fold.setPreferredSize(new Dimension(90, 40));
+        call.setPreferredSize(new Dimension(110, 40));
+        allIn.setPreferredSize(new Dimension(95, 40));
+        raiseTo.setPreferredSize(new Dimension(85, 40));
         Theme.field(raiseTo);
-        raiseTo.setPreferredSize(new Dimension(90, 43));
-        actionBar.add(controls, BorderLayout.CENTER);
+        raise.setPreferredSize(new Dimension(95, 40));
+
+        for (var component : new JComponent[] {fold, call, allIn, raiseTo, raise}) {
+            bettingBar.add(component);
+        }
+        actionCenterStack.add(bettingBar);
 
         // Row 2: Cụm nút cược nhanh
         quickBetsPanel.add(Theme.label("Tố nhanh:", 11, Theme.MUTED));
         for (var b : new Theme.Button[] {betPlus1, betPlus2, betHalfPot, betPot, betMax}) {
-            b.setPreferredSize(new Dimension(68, 28));
+            b.setPreferredSize(new Dimension(64, 26));
             b.setFont(Theme.font(11, true));
             quickBetsPanel.add(b);
         }
@@ -156,7 +178,8 @@ public final class GamePanel extends JPanel {
         betPot.addActionListener(e -> applyQuickBetPotFraction(1.0));
         betMax.addActionListener(e -> applyQuickBetMax());
 
-        actionBar.add(quickBetsPanel, BorderLayout.SOUTH);
+        actionCenterStack.add(quickBetsPanel);
+        actionBar.add(actionCenterStack, BorderLayout.CENTER);
         add(actionBar, BorderLayout.SOUTH);
 
         eye.addActionListener(e -> {
@@ -445,8 +468,11 @@ public final class GamePanel extends JPanel {
             text = "Đang chuyển sang bàn chờ. Bạn sẽ chọn sẵn sàng cho ván tiếp theo.";
         }
 
-        controls.setVisible(roundId != null && result == null);
-        quickBetsPanel.setVisible(roundId != null && result == null);
+        boolean inRound = roundId != null && result == null;
+        actionCenterStack.setVisible(inRound);
+        eye.setVisible(inRound && mine != null);
+        squeezeBtn.setVisible(inRound && mine != null);
+        emoteBtn.setVisible(true);
 
         boolean canRaise = raise.isEnabled();
         betPlus1.setEnabled(canRaise);
@@ -492,6 +518,8 @@ public final class GamePanel extends JPanel {
 
         status.setText(text);
         status.setForeground(turn ? Theme.GOLD : Theme.MUTED);
+        revalidate();
+        repaint();
     }
 
     private void applyQuickBetMultiplier(int multiplier) {
