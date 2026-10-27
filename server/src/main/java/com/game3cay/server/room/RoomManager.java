@@ -526,7 +526,7 @@ public final class RoomManager implements RoomService {
                     );
                 }
 
-                sendSystemChat(room, "Ván mới bắt đầu. Mỗi người nhận 3 lá bài.");
+
                 publishGameUpdate(room);
             } catch (GameEngineException e) {
                 throw fail(e.getErrorCode(), e.getMessage());
@@ -548,16 +548,7 @@ public final class RoomManager implements RoomService {
             room.lastActionNanos = System.nanoTime();
             room.afkUsers.remove(userId);
 
-            String actionText = switch (request.action()) {
-                case CALL -> "theo / kiểm tra";
-                case RAISE -> "tố đến " + request.raiseTo().stripTrailingZeros().toPlainString() + " điểm";
-                case ALL_IN -> "tất tay";
-                case FOLD -> "úp bài";
-                default -> "đã đặt cược";
-            };
 
-            String displayName = room.members.get(userId).user.displayName();
-            sendSystemChat(room, displayName + " " + actionText);
             publishGameUpdate(room);
         } catch (GameEngineException e) {
             throw fail(e.getErrorCode(), e.getMessage());
@@ -644,10 +635,7 @@ public final class RoomManager implements RoomService {
                     }
                 }
 
-                String endMessage = "CANCELLED".equals(result.roundStatus())
-                        ? "Ván bài đã bị hủy. Điểm cược được hoàn lại đầy đủ."
-                        : "Ván bài kết thúc. Xem kết quả trong " + RoundResult.DISPLAY_SECONDS + " giây.";
-                sendSystemChat(room, endMessage);
+
                 System.out.println("[GAME] " + result.roundStatus() + " roomId=" + room.id + " roundId=" + room.roundId);
 
                 engine.cleanupRound(room.roundId);
@@ -673,12 +661,10 @@ public final class RoomManager implements RoomService {
         if (eligible.size() >= room.settings.minPlayers()) {
             if (room.autoStartDeadlineNanos == 0) {
                 room.autoStartDeadlineNanos = resultClock.getAsLong() + TimeUnit.SECONDS.toNanos(AUTO_START_SECONDS);
-                sendSystemChat(room, "Đủ người chơi! Ván mới sẽ tự động bắt đầu sau " + AUTO_START_SECONDS + " giây.");
             }
         } else {
             if (room.autoStartDeadlineNanos != 0) {
                 room.autoStartDeadlineNanos = 0;
-                sendSystemChat(room, "Chưa đủ người chơi sẵn sàng, đã dừng đếm ngược.");
             }
         }
     }
@@ -774,7 +760,7 @@ public final class RoomManager implements RoomService {
                         engine.handleAction(room.roundId, currentTurnId, BetAction.FOLD, null);
                         room.lastActionNanos = System.nanoTime();
                         room.afkUsers.add(currentTurnId);
-                        sendSystemChat(room, "Hết " + turnTimeoutSeconds + " giây: Tự động úp bài người chơi.");
+
                         publishGameUpdate(room);
                     }
                 }

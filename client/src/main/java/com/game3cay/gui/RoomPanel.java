@@ -5,7 +5,6 @@ import com.game3cay.shared.model.RoomSnapshot;
 
 import javax.swing.Box;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -39,15 +38,7 @@ public final class RoomPanel extends JPanel {
 
     private final JTextPane chatPane = new JTextPane();
     private final JTextField contentField = new JTextField();
-    private final JComboBox<String> quickChatBox = new JComboBox<>(new String[] {
-            "💬 Chat nhanh…",
-            "Chào cả nhà!",
-            "Tố mạnh lên nào!",
-            "Bài đẹp quá!",
-            "Chúc mọi người may mắn!",
-            "Cay thế nhỉ!",
-            "Đen quá đành úp!"
-    });
+
     private final JTextField betAmountField = new JTextField("10", 6);
     private final Theme.Button changeBetButton = new Theme.Button("Đổi cược", "gold");
     private final JPanel betControlsPanel = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -123,28 +114,9 @@ public final class RoomPanel extends JPanel {
         sidebarGlass.add(chatScroll, BorderLayout.CENTER);
 
         var chatInputArea = Theme.transparent(new BorderLayout(0, 8));
-
-        quickChatBox.setFont(Theme.font(12, false));
-        quickChatBox.setBackground(new Color(15, 30, 50));
-        quickChatBox.setForeground(Theme.TEXT);
-        quickChatBox.setFocusable(false);
-        quickChatBox.addActionListener(e -> {
-            int idx = quickChatBox.getSelectedIndex();
-            if (idx > 0 && sendButton.isEnabled()) {
-                String phrase = (String) quickChatBox.getSelectedItem();
-                contentField.setText(phrase);
-                sendButton.doClick();
-                quickChatBox.setSelectedIndex(0);
-            }
-        });
-
         Theme.field(contentField);
-        contentField.setToolTipText("Tin nhắn tối đa 500 ký tự");
-
-        var inputStack = Theme.transparent(new GridLayout(0, 1, 0, 6));
-        inputStack.add(quickChatBox);
-        inputStack.add(contentField);
-        chatInputArea.add(inputStack, BorderLayout.NORTH);
+        contentField.setToolTipText("Tin nhắn tối đa 500 ký tự (Enter để gửi)");
+        chatInputArea.add(contentField, BorderLayout.NORTH);
 
         sendButton.setPreferredSize(new Dimension(110, 39));
         chatInputArea.add(sendButton, BorderLayout.CENTER);
@@ -284,12 +256,15 @@ public final class RoomPanel extends JPanel {
 
         leaveButton.setEnabled(areActionsEnabled && roomSnapshot != null);
         sendButton.setEnabled(areActionsEnabled && roomSnapshot != null);
-        quickChatBox.setEnabled(areActionsEnabled && roomSnapshot != null);
+
         contentField.setEnabled(areActionsEnabled && roomSnapshot != null);
         gamePanel.setActionsEnabled(areActionsEnabled && roomSnapshot != null);
     }
 
     public void appendChat(ChatMessage message) {
+        if (message == null || "SYSTEM".equalsIgnoreCase(message.type()) || message.senderId() == 0L) {
+            return; // Khung chat chỉ hiển thị chat giữa người chơi chứ không hiển thị diễn biến của ván bài
+        }
         StyledDocument doc = chatPane.getStyledDocument();
         try {
             if (doc.getLength() > 25000) {
@@ -299,12 +274,12 @@ public final class RoomPanel extends JPanel {
             SimpleAttributeSet nameStyle = new SimpleAttributeSet();
             StyleConstants.setFontFamily(nameStyle, "SansSerif");
             StyleConstants.setFontSize(nameStyle, 12);
-            StyleConstants.setForeground(nameStyle, "SYSTEM".equals(message.type()) ? Theme.MUTED : Theme.GOLD);
+            StyleConstants.setForeground(nameStyle, Theme.GOLD);
             StyleConstants.setBold(nameStyle, true);
 
-            String sender = "SYSTEM".equals(message.type())
-                    ? "Bàn chơi"
-                    : (message.senderDisplayName() == null ? "Người chơi" : message.senderDisplayName());
+            String sender = (message.senderDisplayName() == null || message.senderDisplayName().isBlank()) ? "Người chơi" : message.senderDisplayName();
+
+
 
             String timeString = DateTimeFormatter.ofPattern("HH:mm")
                     .withZone(ZoneId.systemDefault())
@@ -315,7 +290,7 @@ public final class RoomPanel extends JPanel {
             SimpleAttributeSet textStyle = new SimpleAttributeSet();
             StyleConstants.setFontFamily(textStyle, "SansSerif");
             StyleConstants.setFontSize(textStyle, 13);
-            StyleConstants.setForeground(textStyle, "SYSTEM".equals(message.type()) ? Theme.MUTED : Theme.TEXT);
+            StyleConstants.setForeground(textStyle, Theme.TEXT);
 
             doc.insertString(doc.getLength(), message.content() + "\n\n", textStyle);
             chatPane.setCaretPosition(doc.getLength());

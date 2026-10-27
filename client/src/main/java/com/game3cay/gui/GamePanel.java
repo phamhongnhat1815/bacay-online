@@ -56,8 +56,6 @@ public final class GamePanel extends JPanel {
     private final Theme.Button allIn = new Theme.Button("Tất tay", "red");
     private final Theme.Button eye = new Theme.Button("Ẩn bài", "plain");
     private final Theme.Button squeezeBtn = new Theme.Button("🖐 Nặn bài", "navy");
-    private final Theme.Button emoteBtn = new Theme.Button("😊 Biểu cảm", "plain");
-    private Consumer<String> chatSender;
 
     private final Theme.Button betPlus1 = new Theme.Button("+1x", "plain");
     private final Theme.Button betPlus2 = new Theme.Button("+2x", "plain");
@@ -100,13 +98,10 @@ public final class GamePanel extends JPanel {
         actionBar.setPreferredSize(new Dimension(0, 126));
         eye.setPreferredSize(new Dimension(86, 30));
         squeezeBtn.setPreferredSize(new Dimension(100, 30));
-        emoteBtn.setPreferredSize(new Dimension(105, 30));
         eye.setFont(Theme.font(12, true));
         squeezeBtn.setFont(Theme.font(12, true));
-        emoteBtn.setFont(Theme.font(12, true));
         utilityBar.add(eye);
         utilityBar.add(squeezeBtn);
-        utilityBar.add(emoteBtn);
         topBar.add(status, BorderLayout.WEST);
         topBar.add(utilityBar, BorderLayout.EAST);
         actionBar.add(topBar, BorderLayout.NORTH);
@@ -130,22 +125,7 @@ public final class GamePanel extends JPanel {
         eye.setToolTipText("Ẩn hoặc hiện ba lá bài của bạn (Phím tắt: H)");
         squeezeBtn.setToolTipText("Mở chế độ Nặn bài để hé mở điểm số (Phím tắt: S)");
         squeezeBtn.addActionListener(e -> openCardSqueeze());
-        emoteBtn.setToolTipText("Gửi biểu cảm / Sticker tương tác lên avatar");
-        emoteBtn.addActionListener(e -> {
-            EmotePopup popup = new EmotePopup(emote -> {
-                if (chatSender != null) {
-                    chatSender.accept(emote.toChatText());
-                }
-            });
-            int px = emoteBtn.getWidth() - popup.getPreferredSize().width;
-            popup.showAt(emoteBtn, px, -popup.getPreferredSize().height - 5);
-        });
 
-        table.setOnSendEmote(emote -> {
-            if (chatSender != null) {
-                chatSender.accept(emote.toChatText());
-            }
-        });
 
         fold.setPreferredSize(new Dimension(90, 40));
         call.setPreferredSize(new Dimension(110, 40));
@@ -472,7 +452,6 @@ public final class GamePanel extends JPanel {
         actionCenterStack.setVisible(inRound);
         eye.setVisible(inRound && mine != null);
         squeezeBtn.setVisible(inRound && mine != null);
-        emoteBtn.setVisible(true);
 
         boolean canRaise = raise.isEnabled();
         betPlus1.setEnabled(canRaise);
@@ -620,9 +599,7 @@ public final class GamePanel extends JPanel {
         return table;
     }
 
-    public void setChatSender(Consumer<String> sender) {
-        this.chatSender = sender;
-    }
+
 
     public void openCardSqueeze() {
         if (mine == null || mine.myCards() == null || mine.myCards().size() < 3) {

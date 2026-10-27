@@ -1,7 +1,7 @@
 package com.game3cay.controller;
 
 import com.game3cay.gui.DataDialog;
-import com.game3cay.gui.Emote;
+
 import com.game3cay.gui.MainFrame;
 import com.game3cay.gui.Sound;
 import com.game3cay.network.PacketListener;
@@ -149,9 +149,6 @@ public final class ConnectionController implements PacketListener {
         });
 
         view.room().game().onAction(actionReq -> sendRequest(PacketType.GAME_ACTION, actionReq));
-        view.room().game().setChatSender(text -> {
-            sendRequest(PacketType.CHAT_MESSAGE, new ChatMessage(null, null, text, "TEXT", 0));
-        });
 
         view.onProfile(() -> sendRequest(PacketType.GET_PROFILE, null));
         view.onHistory(() -> openDataDialog(true));
@@ -524,10 +521,6 @@ public final class ConnectionController implements PacketListener {
                     view.showMessage(chatEvent.message().content());
                 } else if (currentRoom != null && chatEvent.roomId() == currentRoom.roomId()) {
                     view.room().appendChat(chatEvent.message());
-                    Emote emote = Emote.fromChatText(chatEvent.message().content());
-                    if (emote != null) {
-                        view.room().game().table().triggerEmote(chatEvent.message().senderId(), emote);
-                    }
                     if (chatEvent.message().content().contains("úp bài")) {
                         Sound.playCardFlip();
                     }

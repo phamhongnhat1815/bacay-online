@@ -57,21 +57,7 @@ public final class GameTablePanel extends JPanel {
 
     private final Timer animation = new Timer(25, e -> repaint());
 
-    private final Map<Long, ActiveEmote> activeEmotes = new ConcurrentHashMap<>();
     private final List<FlyingChip> flyingChips = new CopyOnWriteArrayList<>();
-    private Consumer<Emote> emoteSender;
-
-    private static final class ActiveEmote {
-        final String emoji;
-        final long startNanos;
-        final long expireNanos;
-
-        ActiveEmote(String emoji, long startNanos, long expireNanos) {
-            this.emoji = emoji;
-            this.startNanos = startNanos;
-            this.expireNanos = expireNanos;
-        }
-    }
 
     private static final class FlyingChip {
         final double startX, startY;
@@ -109,43 +95,6 @@ public final class GameTablePanel extends JPanel {
         setLayout(null);
         setOpaque(false);
         setPreferredSize(new Dimension(BASE_WIDTH, BASE_HEIGHT));
-
-        addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                handleTableClick(e.getX(), e.getY());
-            }
-        });
-    }
-
-    public void setOnSendEmote(Consumer<Emote> sender) {
-        this.emoteSender = sender;
-    }
-
-    public void triggerEmote(long userId, Emote emote) {
-        if (emote == null) return;
-        long now = System.nanoTime();
-        activeEmotes.put(userId, new ActiveEmote(emote.emoji(), now, now + 3_500_000_000L));
-        Sound.playEmotePop();
-        repaint();
-    }
-
-    private void handleTableClick(int mouseX, int mouseY) {
-        if (room == null || emoteSender == null) return;
-        double scale = Math.min((double) getWidth() / BASE_WIDTH, (double) getHeight() / BASE_HEIGHT);
-        int offsetX = (int) ((getWidth() - BASE_WIDTH * scale) / 2);
-        int offsetY = (int) ((getHeight() - BASE_HEIGHT * scale) / 2);
-        int bx = (int) ((mouseX - offsetX) / scale);
-        int by = (int) ((mouseY - offsetY) / scale);
-
-        // Ghế của bản thân luôn nằm ở vị trí góc dưới (angle = Math.PI / 2)
-        int x = (int) (550 + 445 * Math.cos(Math.PI / 2));
-        int y = (int) (365 + 242 * Math.sin(Math.PI / 2));
-        int w = 174, h = 68;
-        if (bx >= x - w / 2 && bx <= x + w / 2 && by >= y - h / 2 && by <= y + h / 2) {
-            EmotePopup popup = new EmotePopup(emoteSender);
-            popup.showAt(this, mouseX - 70, mouseY - 75);
-        }
     }
 
     /**
@@ -519,41 +468,7 @@ public final class GameTablePanel extends JPanel {
             g.fillRoundRect(left + 14, top + h - 6, (int) ((w - 28) * fraction), 4, 3, 3);
         }
 
-        // Vẽ biểu cảm / Sticker nhảy động trên đầu Avatar
-        ActiveEmote ae = activeEmotes.get(p.userId());
-        if (ae != null) {
-            long nowNanos = System.nanoTime();
-            if (nowNanos >= ae.expireNanos) {
-                activeEmotes.remove(p.userId());
-            } else {
-                double total = ae.expireNanos - ae.startNanos;
-                double progress = Math.min(1.0, (nowNanos - ae.startNanos) / total);
 
-                double scaleBounce = (progress < 0.15) ? (progress / 0.15) * 1.25 : 1.0;
-                float alpha = (progress > 0.8) ? (float) ((1.0 - progress) / 0.2) : 1.0f;
-                alpha = Math.clamp(alpha, 0.0f, 1.0f);
-
-                int bubbleW = 48;
-                int bubbleH = 48;
-                int bubbleX = left + 8;
-                int bubbleY = (int) (top - 42 - 14 * progress);
-
-                var eg = (Graphics2D) g.create();
-                eg.setComposite(AlphaComposite.SrcOver.derive(alpha));
-                eg.setColor(new Color(0, 0, 0, 120));
-                eg.fillRoundRect(bubbleX + 3, bubbleY + 3, bubbleW, bubbleH, 20, 20);
-
-                eg.setPaint(new GradientPaint(bubbleX, bubbleY, new Color(24, 44, 76), bubbleX, bubbleY + bubbleH, new Color(12, 22, 40)));
-                eg.fillRoundRect(bubbleX, bubbleY, bubbleW, bubbleH, 20, 20);
-                eg.setColor(Theme.GOLD);
-                eg.setStroke(new BasicStroke(1.5f));
-                eg.drawRoundRect(bubbleX, bubbleY, bubbleW, bubbleH, 20, 20);
-
-                eg.setFont(new Font("Segoe UI Emoji", Font.PLAIN, (int) (26 * scaleBounce)));
-                eg.drawString(ae.emoji, bubbleX + 8, bubbleY + 33);
-                eg.dispose();
-            }
-        }
 
         g.setStroke(new BasicStroke(1.0f));
     }
