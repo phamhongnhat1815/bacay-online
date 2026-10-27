@@ -87,7 +87,8 @@ bacay-online/
 ├── docs/                       # Tài liệu kỹ thuật chuyên sâu
 │   ├── Architecture.md         # Kiến trúc hệ thống, luồng dữ liệu & WAL
 │   ├── Protocol.md             # Đặc tả gói tin nhị phân Packet v2 & ErrorCode
-│   └── Database.md             # Thiết kế CSDL quan hệ, ERD & Chỉ mục
+│   ├── Database.md             # Thiết kế CSDL quan hệ, ERD & Chỉ mục
+│   └── Screen_Data_Mapping.md  # Đặc tả giao diện Swing & ánh xạ dữ liệu UI
 ├── scripts/                    # Scripts tự động hóa Windows (Build & Run)
 ├── Game_Rules.md               # Quy định chi tiết luật chơi bài Ba Cây
 ├── Build.cmd                   # Script đóng gói dự án ra dist/ trên Windows
@@ -195,7 +196,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Build.ps1
 ./mvnw clean install
 ```
 
-Toàn bộ artifact sẽ được tự động biên dịch, chạy qua 29 bài kiểm thử đơn vị & tích hợp (Unit & Integration Tests), và sao chép đầy đủ các file chạy vào thư mục `dist/`.
+Toàn bộ artifact sẽ được tự động biên dịch, chạy qua 31 bài kiểm thử đơn vị & tích hợp (Unit & Integration Tests), và sao chép đầy đủ các file chạy vào thư mục `dist/`.
 
 ---
 
@@ -220,7 +221,8 @@ Toàn bộ artifact sẽ được tự động biên dịch, chạy qua 29 bài 
 
 ## 📚 Tài Liệu Kỹ Thuật Chi Tiết
 
-- 📖 [**Luật Chơi Ba Cây** (`Game_Rules.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/Game_Rules.md): Quy định chi tiết về thứ bậc Sáp, Liêng, Bồ Đội, Điểm, cơ chế so chất Rô > Cơ > Bích > Chuồn và các mức cược.
-- 🏛 [**Kiến Trúc Hệ Thống** (`docs/Architecture.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Architecture.md): Sơ đồ phân tầng 3 module, mô hình phân luồng Swing EDT, giao dịch ACID và cơ chế Write-Ahead Log.
-- 📡 [**Đặc Tả Giao Thức Mạng** (`docs/Protocol.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Protocol.md): Chi tiết khung nhị phân Packet v2, bộ lọc tuần tự hóa `ObjectInputFilter`, sơ đồ tuần tự và bảng mã `ErrorCode`.
-- 🗄 [**Thiết Kế Cơ Sở Dữ Liệu** (`docs/Database.md`)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Database.md): Sơ đồ ERD quan hệ thực thể, ràng buộc toàn vẹn dữ liệu, chống deadlock và kịch bản khởi tạo.
+- 📖 [**Luật Chơi Ba Cây** (Game_Rules.md)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/Game_Rules.md): Quy định chi tiết về thứ bậc Sáp, Liêng, Bồ Đội, Điểm, cơ chế so chất Rô > Cơ > Bích > Chuồn và các mức cược.
+- 🏛 [**Kiến Trúc Hệ Thống** (docs/Architecture.md)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Architecture.md): Sơ đồ phân tầng 4 module, mô hình phân luồng Swing EDT, giao dịch ACID và cơ chế Write-Ahead Log.
+- 📡 [**Đặc Tả Giao Thức Mạng** (docs/Protocol.md)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Protocol.md): Chi tiết khung nhị phân Packet v2, bộ lọc tuần tự hóa ObjectInputFilter, sơ đồ tuần tự và bảng mã ErrorCode.
+- 🗄 [**Thiết Kế Cơ Sở Dữ Liệu** (docs/Database.md)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Database.md): Sơ đồ ERD quan hệ thực thể, ràng buộc toàn vẹn dữ liệu, chống deadlock và kịch bản khởi tạo.
+- 🖥 [**Ánh Xạ Màn Hình & Dữ Liệu UI** (docs/Screen_Data_Mapping.md)](file:///c:/Users/Tung%20Khanh%20Luong/Desktop/bacay-online/docs/Screen_Data_Mapping.md): Chi tiết các màn hình Java Swing, chuyển đổi CardLayout, ánh xạ gói tin Packet v2, và quản lý luồng EDT.
