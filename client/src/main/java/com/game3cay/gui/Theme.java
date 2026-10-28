@@ -43,10 +43,11 @@ public final class Theme {
     }
 
     public static JLabel label(String text, int fontSize, Color color) {
-        JLabel label = new JLabel(text);
+        JLabel label = new JLabel();
+        label.putClientProperty("html.disable", Boolean.TRUE);
+        label.setText(text);
         label.setFont(font(fontSize, false));
         label.setForeground(color);
-        label.putClientProperty("html.disable", Boolean.TRUE);
         return label;
     }
 
@@ -89,7 +90,10 @@ public final class Theme {
 
         public Button(String text, String colorVariant) {
             super(text);
-            this.colorVariant = colorVariant;
+            this.colorVariant = switch (colorVariant == null ? "" : colorVariant) {
+                case "plain", "blue", "gold", "green", "orange", "red", "disabled" -> colorVariant;
+                default -> "blue";
+            };
             setFont(font(14, true));
             setForeground(TEXT);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));

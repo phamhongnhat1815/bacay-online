@@ -45,7 +45,7 @@ public final class GamePanel extends JPanel {
     private final Theme.Button fold = new Theme.Button("Úp bài", "plain");
     private final Theme.Button allIn = new Theme.Button("Tất tay", "red");
     private final Theme.Button eye = new Theme.Button("Ẩn bài", "plain");
-    private final Theme.Button squeezeBtn = new Theme.Button("🖐 Nặn bài", "navy");
+    private final Theme.Button squeezeBtn = new Theme.Button("🖐 Nặn bài", "blue");
 
     private final Theme.Button betPlus1 = new Theme.Button("+1x", "plain");
     private final Theme.Button betPlus2 = new Theme.Button("+2x", "plain");
@@ -171,7 +171,7 @@ public final class GamePanel extends JPanel {
         autoReadyCheck.setForeground(Theme.TEXT);
         autoReadyCheck.setOpaque(false);
         autoReadyCheck.setFocusPainted(false);
-        autoReadyCheck.setVisible(false);
+        autoReadyCheck.setVisible(true);
         autoReadyCheck.addActionListener(e -> {
             PREFS.putBoolean("auto_ready", autoReadyCheck.isSelected());
             checkAutoReady();
@@ -182,7 +182,7 @@ public final class GamePanel extends JPanel {
 
     public void room(RoomSnapshot r, long uid) {
         this.room = r;
-        if ("WAITING".equals(r.status()) && result != null) {
+        if ("WAITING".equals(r.status()) && roundId != null) {
             finishResult();
         }
         this.myId = uid;

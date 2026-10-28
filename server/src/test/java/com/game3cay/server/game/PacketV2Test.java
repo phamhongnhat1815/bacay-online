@@ -45,7 +45,7 @@ class PacketV2Test {
     try (var server = new ServerSocket(0);
         var outgoing = new Socket("127.0.0.1", server.getLocalPort());
         var incoming = server.accept()) {
-      var out = new ObjectOutputStream(outgoing.getOutputStream());
+      var out = PacketIO.openOutput(outgoing);
       out.flush();
       var input = PacketIO.openInput(incoming);
       for (var p : packets) {

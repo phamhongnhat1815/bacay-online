@@ -1,8 +1,7 @@
 package com.game3cay.gui;
 
 import com.game3cay.shared.model.Card;
-import com.game3cay.shared.model.HandType;
-import com.game3cay.shared.model.Rank;
+import com.game3cay.shared.game.HandEvaluator;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -27,7 +26,6 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
-import java.util.Arrays;
 import java.util.List;
 
 public final class CardSqueezeDialog extends JDialog {
@@ -92,7 +90,7 @@ public final class CardSqueezeDialog extends JDialog {
         btnReveal.setPreferredSize(new Dimension(140, 38));
         btnReveal.addActionListener(e -> canvas.revealAll());
 
-        var btnDone = new Theme.Button("Xong", "navy");
+        var btnDone = new Theme.Button("Xong", "blue");
         btnDone.setPreferredSize(new Dimension(100, 38));
         btnDone.addActionListener(e -> finishAndClose());
 
@@ -259,33 +257,12 @@ public final class CardSqueezeDialog extends JDialog {
         if (cards == null || cards.size() != 3) {
             return "";
         }
-        Card c1 = cards.get(0);
-        Card c2 = cards.get(1);
-        Card c3 = cards.get(2);
-
-        if (c1.rank() == c2.rank() && c2.rank() == c3.rank()) {
-            return "★ SÁP " + c1.rank().displayName() + " ★";
-        }
-
-        if (c1.rank().isFaceCard() && c2.rank().isFaceCard() && c3.rank().isFaceCard()) {
-            return "★ BỒ ĐỘI (3 TÂY) ★";
-        }
-
-        int[] sorted = {c1.rank().rankValue(), c2.rank().rankValue(), c3.rank().rankValue()};
-        Arrays.sort(sorted);
-        if (sorted[0] + 1 == sorted[1] && sorted[1] + 1 == sorted[2]) {
-            return "★ LIÊNG " + c1.rank().displayName() + "-" + c2.rank().displayName() + "-" + c3.rank().displayName() + " ★";
-        }
-
-        if (sorted[0] == 2 && sorted[1] == 3 && sorted[2] == 14) {
-            return "★ LIÊNG A-2-3 ★";
-        }
-
-        int sum = c1.pointValue() + c2.pointValue() + c3.pointValue();
-        int score = sum % 10;
-        if (score == 0) {
-            return "★ 10 ĐIỂM (10 NƯỚC) ★";
-        }
-        return "★ " + score + " ĐIỂM ★";
+        var hand = new HandEvaluator().evaluate(cards);
+        return switch (hand.handType()) {
+            case SAP -> "★ SÁP " + cards.getFirst().rank().displayName() + " ★";
+            case LIENG -> "★ LIÊNG ★";
+            case BO_DOI -> "★ BỒ ĐỘI (3 TÂY) ★";
+            case DIEM -> "★ " + hand.score() + " ĐIỂM ★";
+        };
     }
 }

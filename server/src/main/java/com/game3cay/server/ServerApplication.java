@@ -4,9 +4,11 @@ import com.game3cay.server.bus.JdbcGameBUS;
 import com.game3cay.server.bus.JdbcUserBUS;
 import com.game3cay.server.dal.ConnectionProvider;
 import com.game3cay.server.dal.DatabaseConfig;
+import com.game3cay.server.dal.AdminBootstrap;
 import com.game3cay.server.game.ResultPersistence;
 import com.game3cay.server.network.ClientHandler;
 import com.game3cay.server.network.SessionRegistry;
+import com.game3cay.server.network.ServerTls;
 import com.game3cay.server.room.RoomEvents;
 import com.game3cay.server.room.RoomManager;
 import com.game3cay.shared.model.ChatMessage;
@@ -33,6 +35,10 @@ public final class ServerApplication {
     public static void main(String[] args) throws Exception {
         System.setOut(new java.io.PrintStream(System.out, true, java.nio.charset.StandardCharsets.UTF_8));
         System.setErr(new java.io.PrintStream(System.err, true, java.nio.charset.StandardCharsets.UTF_8));
+        java.nio.file.Files.createDirectories(Path.of("logs"));
+        try (var configuration = ServerApplication.class.getResourceAsStream("/logging.properties")) {
+            if (configuration != null) java.util.logging.LogManager.getLogManager().readConfiguration(configuration);
+        }
         int port = (args.length == 0)
                 ? RuntimeSettings.integer("server.properties", "server.port", 8888, 1, 65535)
                 : Integer.parseInt(args[0]);
@@ -44,11 +50,20 @@ public final class ServerApplication {
             throw new IllegalArgumentException("Cổng mạng (Port) phải nằm trong khoảng từ 1 đến 65535");
         }
 
-        ConnectionProvider connections = DatabaseConfig.fromEnvironment();
+        try (ConnectionProvider connections = DatabaseConfig.fromEnvironment()) {
+            serve(port, maxConnections, connections);
+        }
+    }
+
+    private static void serve(int port, int maxConnections, ConnectionProvider connections) throws Exception {
         JdbcUserBUS userBus = new JdbcUserBUS(connections);
         JdbcGameBUS gameBus = new JdbcGameBUS(connections);
 
         gameBus.checkSchema();
+        Path adminCredentials = Path.of(System.getenv().getOrDefault("BACAY_ADMIN_CREDENTIAL_FILE", "data/admin-bootstrap.properties"));
+        if (AdminBootstrap.initialize(connections, adminCredentials)) {
+            System.out.println("[ADMIN] Đã khởi tạo quản trị viên. Thông tin cài đặt: " + adminCredentials.toAbsolutePath());
+        }
 
         Path dataDir = Path.of(System.getenv().getOrDefault("BACAY_DATA_DIR", "data/pending-results"));
         ResultPersistence persistence = new ResultPersistence(gameBus, dataDir);
@@ -92,12 +107,19 @@ public final class ServerApplication {
         );
 
         Set<ClientHandler> activeHandlers = ConcurrentHashMap.newKeySet();
+        ServerSocket serverSocket;
+        try { serverSocket = ServerTls.listen(port); }
+        catch (Exception e) {
+            roomManager.close();
+            persistence.close();
+            clientWorkers.shutdownNow();
+            throw e;
+        }
         ScheduledExecutorService roomClock = Executors.newSingleThreadScheduledExecutor();
-        roomClock.scheduleWithFixedDelay(roomManager::tick, 1, 1, TimeUnit.SECONDS);
 
-        ServerSocket serverSocket = new ServerSocket(port);
-
+        java.util.concurrent.atomic.AtomicBoolean cleanedUp = new java.util.concurrent.atomic.AtomicBoolean();
         Runnable cleanupTask = () -> {
+            if (!cleanedUp.compareAndSet(false, true)) return;
             try {
                 serverSocket.close();
             } catch (Exception ignored) {
@@ -116,10 +138,17 @@ public final class ServerApplication {
                 Thread.currentThread().interrupt();
             }
 
+            roomManager.close();
             persistence.close();
+            try { connections.close(); }
+            catch (Exception e) { java.util.logging.Logger.getLogger(ServerApplication.class.getName()).warning("Không đóng được dịch vụ JDBC: " + e.getClass().getSimpleName()); }
         };
 
         Runtime.getRuntime().addShutdownHook(new Thread(cleanupTask, "server-shutdown"));
+        roomClock.scheduleWithFixedDelay(() -> {
+            try { roomManager.tick(); }
+            catch (RuntimeException e) { java.util.logging.Logger.getLogger(ServerApplication.class.getName()).log(java.util.logging.Level.SEVERE, "Room clock failed", e); }
+        }, 1, 1, TimeUnit.SECONDS);
 
         System.out.println(
                 "Máy chủ Ba Cây TCP đang lắng nghe trên cổng " + port

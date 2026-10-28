@@ -285,18 +285,21 @@ public final class DefaultGameEngine implements GameEngine {
         round.pending.remove(userId);
         round.version++;
 
-        long connectedPlayers = round.players.stream().filter(p -> !p.left).count();
-        if (connectedPlayers < 2) {
-            finishRound(round, true);
-        } else if (Objects.equals(round.turnUserId, userId)) {
+        // Leaving is a fold: disconnecting must not refund a bad hand.
+        if (Objects.equals(round.turnUserId, userId)) {
             advanceTurn(round, round.players.indexOf(player));
-        } else {
-            long remainingActive = round.players.stream().filter(p -> !p.folded && !p.left).count();
-            if (remainingActive <= 1) {
-                finishRound(round, false);
-            }
+        } else if (round.players.stream().filter(p -> !p.folded && !p.left).count() <= 1
+                || round.pending.isEmpty()) {
+            finishRound(round, false);
         }
 
+        return buildActionResult(round);
+    }
+
+    @Override
+    public ActionResult cancelRound(String roundId) throws GameEngineException {
+        Round round = requireRound(roundId);
+        finishRound(round, true);
         return buildActionResult(round);
     }
 

@@ -40,12 +40,17 @@ class IntegrationTest {
           var s = c.createStatement()) {
         s.execute("CREATE DATABASE " + mysqlDatabase + " CHARACTER SET utf8mb4");
       }
-      cp =
-          () ->
-              DriverManager.getConnection(
-                  base + mysqlDatabase + "?allowPublicKeyRetrieval=true&useSSL=false",
-                  username,
-                  password);
+      cp = () -> {
+        var connection = DriverManager.getConnection(base, username, password);
+        try {
+          connection.setCatalog(mysqlDatabase);
+          return connection;
+        } catch (SQLException e) {
+          try { connection.close(); }
+          catch (SQLException closeError) { e.addSuppressed(closeError); }
+          throw e;
+        }
+      };
     }
     users = new JdbcUserBUS(cp);
     games = new JdbcGameBUS(cp);
@@ -373,7 +378,7 @@ class IntegrationTest {
         String rid2 = ((GameStartInfo) c.await(PacketType.START_GAME).getData()).roundId();
         d.close();
         assertEquals(
-            "CANCELLED", ((RoundResult) c.await(PacketType.ROUND_RESULT).getData()).roundStatus());
+            "FINISHED", ((RoundResult) c.await(PacketType.ROUND_RESULT).getData()).roundStatus());
         a.request(PacketType.LEAVE_ROOM, null);
         b.request(PacketType.LEAVE_ROOM, null);
         assertEquals(
@@ -552,14 +557,14 @@ class IntegrationTest {
 
   static final class Wire implements AutoCloseable {
     final Socket socket;
-    final ObjectOutputStream out;
-    final ObjectInputStream in;
+    final PacketIO.Output out;
+    final PacketIO.Input in;
     final List<Packet> seen = new ArrayList<>();
 
     Wire(Socket s) throws Exception {
       socket = s;
       s.setSoTimeout(5000);
-      out = new ObjectOutputStream(s.getOutputStream());
+      out = PacketIO.openOutput(s);
       out.flush();
       in = PacketIO.openInput(s);
     }

@@ -2,17 +2,14 @@ package com.game3cay.shared.network;
 
 import com.game3cay.shared.model.*;
 
-import java.io.IOException;
-import java.io.ObjectInputFilter;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigDecimal;
 import java.net.Socket;
 import java.util.List;
 
 public final class PacketIO {
     private static final String DESERIALIZATION_FILTER_PATTERN =
-            "maxdepth=24;maxarray=4096;"
+            "maxdepth=24;maxarray=4096;maxrefs=20000;maxbytes=1048576;"
                     + "com.game3cay.shared.model.*;"
                     + "com.game3cay.shared.network.Packet;"
                     + "com.game3cay.shared.network.Packet$ErrorPayload;"
@@ -27,28 +24,116 @@ public final class PacketIO {
 
     private PacketIO() {}
 
-    public static ObjectInputStream openInput(Socket socket) throws IOException {
-        var input = new ObjectInputStream(socket.getInputStream());
-        input.setObjectInputFilter(ObjectInputFilter.Config.createFilter(DESERIALIZATION_FILTER_PATTERN));
-        return input;
+    public static final int MAGIC = 0x3C33;
+    public static final int MAX_FRAME_BYTES = 1_048_576;
+    public static final int MAX_CHAT_TEXT = 500;
+    public static final int MAX_BROADCAST_TEXT = 500;
+    public static final int MAX_SYSTEM_TEXT = 600;
+    public static final int FRAME_TIMEOUT_MS = 10_000;
+
+    public static Input openInput(Socket socket) throws IOException {
+        return new Input(socket);
     }
 
-    public static Packet read(ObjectInputStream input) throws IOException, ClassNotFoundException {
-        Object raw = input.readObject();
-        if (!(raw instanceof Packet packet)) {
-            throw new IOException("Dữ liệu nhận được không phải là Packet hợp lệ");
-        }
-        validate(packet);
-        return packet;
+    public static Output openOutput(Socket socket) throws IOException {
+        return new Output(socket.getOutputStream());
     }
 
-    public static void write(ObjectOutputStream output, Packet packet) throws IOException {
+    public static Packet read(Input input) throws IOException, ClassNotFoundException {
+        return input.readPacket();
+    }
+
+    public static void write(Output output, Packet packet) throws IOException {
         validate(packet);
-        synchronized (output) {
-            output.reset();
-            output.writeObject(packet);
-            output.flush();
+        output.writePacket(packet);
+    }
+
+    /** One bounded object stream per frame; there is no deserialization on the network stream. */
+    public static final class Input implements AutoCloseable {
+        private final Socket socket;
+        private final InputStream raw;
+        private int idleTimeoutMillis = 20_000;
+
+        private Input(Socket socket) throws IOException {
+            this.socket = socket;
+            this.raw = socket.getInputStream();
         }
+
+        private Packet readPacket() throws IOException, ClassNotFoundException {
+            socket.setSoTimeout(idleTimeoutMillis);
+            int first = raw.read();
+            if (first < 0) throw new EOFException("Kết nối đã đóng");
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(FRAME_TIMEOUT_MS);
+            byte[] header = new byte[8];
+            header[0] = (byte) first;
+            readFully(header, 1, 7, deadline);
+            var frame = new DataInputStream(new ByteArrayInputStream(header));
+            if (frame.readUnsignedShort() != MAGIC) throw new IOException("Sai magic của giao thức");
+            int version = frame.readUnsignedByte();
+            int typeCode = frame.readUnsignedByte();
+            int length = frame.readInt();
+            if (version != Packet.VERSION) throw new IOException("Phiên bản giao thức không tương thích: " + version);
+            if (typeCode < 1 || typeCode > PacketType.values().length) throw new IOException("Mã packet không hợp lệ");
+            if (length < 1 || length > MAX_FRAME_BYTES) throw new IOException("Kích thước packet vượt giới hạn");
+            byte[] payload = new byte[length];
+            readFully(payload, 0, length, deadline);
+            try (var objects = new ObjectInputStream(new ByteArrayInputStream(payload))) {
+                objects.setObjectInputFilter(ObjectInputFilter.Config.createFilter(DESERIALIZATION_FILTER_PATTERN));
+                Object rawPacket = objects.readObject();
+                if (!(rawPacket instanceof Packet packet)) throw new IOException("Dữ liệu không phải Packet");
+                if (packet.getType() != PacketType.values()[typeCode - 1]) throw new IOException("Loại packet không khớp header");
+                validate(packet);
+                if (objects.read() != -1) throw new IOException("Dữ liệu thừa trong packet");
+                return packet;
+            }
+        }
+
+        private void readFully(byte[] buffer, int offset, int length, long deadline) throws IOException {
+            while (length > 0) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) throw new java.net.SocketTimeoutException("Quá thời gian đọc packet");
+                socket.setSoTimeout((int) Math.max(1, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining)));
+                int read = raw.read(buffer, offset, length);
+                if (read < 0) throw new EOFException("Packet chưa nhận đủ dữ liệu");
+                offset += read;
+                length -= read;
+            }
+        }
+
+        public void setIdleTimeoutMillis(int timeout) {
+            if (timeout < 1) throw new IllegalArgumentException("Timeout phải dương");
+            idleTimeoutMillis = timeout;
+        }
+
+        @Override public void close() throws IOException { raw.close(); }
+    }
+
+    public static final class Output implements AutoCloseable {
+        private final DataOutputStream raw;
+        private Output(OutputStream raw) { this.raw = new DataOutputStream(raw); }
+
+        private synchronized void writePacket(Packet packet) throws IOException {
+            var bytes = new ByteArrayOutputStream();
+            var bounded = new FilterOutputStream(bytes) {
+                private int count;
+                private void reserve(int amount) throws IOException {
+                    if (amount > MAX_FRAME_BYTES - count) throw new IOException("Kích thước packet vượt giới hạn");
+                    count += amount;
+                }
+                @Override public void write(int value) throws IOException { reserve(1); out.write(value); }
+                @Override public void write(byte[] b, int off, int len) throws IOException { reserve(len); out.write(b, off, len); }
+            };
+            try (var objects = new ObjectOutputStream(bounded)) { objects.writeObject(packet); }
+            raw.writeShort(MAGIC);
+            raw.writeByte(Packet.VERSION);
+            raw.writeByte(packet.getType().ordinal() + 1);
+            raw.writeInt(bytes.size());
+            bytes.writeTo(raw);
+            raw.flush();
+        }
+
+        public synchronized void flush() throws IOException { raw.flush(); }
+        @Override public synchronized void close() throws IOException { raw.close(); }
     }
 
     private static boolean isNonEmptyText(String value, int maxLength) {
@@ -125,7 +210,7 @@ public final class PacketIO {
 
             case CHAT_MESSAGE -> (data instanceof ChatMessage c
                     && c.content() != null
-                    && c.content().length() <= 2000
+                    && c.content().length() <= MAX_CHAT_TEXT
                     && ("TEXT".equals(c.type()) || "EMOJI".equals(c.type()) || "SYSTEM".equals(c.type())))
                     || (data instanceof RoomChatEvent e
                     && isValidChatEvent(e)
@@ -206,20 +291,22 @@ public final class PacketIO {
 
             case ADMIN_LOCK_USER_REQ -> data instanceof AdminLockUserRequest;
             case ADMIN_ADJUST_BALANCE_REQ -> data instanceof AdminAdjustBalanceRequest r
-                    && r.delta() != null && r.delta().precision() <= 15 && r.delta().scale() <= 2;
+                    && r.userId() > 0 && r.delta() != null && r.delta().signum() != 0
+                    && r.delta().precision() <= 15 && r.delta().scale() >= 0 && r.delta().scale() <= 2
+                    && isNonEmptyText(r.reason(), 255);
 
             case ADMIN_ROOMS_MONITOR_REQ -> data == null;
             case ADMIN_ROOMS_MONITOR_RESP -> data instanceof List<?> list
                     && list.stream().allMatch(AdminRoomDetail.class::isInstance);
 
             case ADMIN_FORCE_RESET_ROOM -> data instanceof AdminResetRoomRequest r
-                    && r.roomId() > 0;
+                    && r.roomId() > 0 && isOptionalText(r.reason(), 255);
 
             case ADMIN_INSPECT_ROOM_REQ -> data instanceof Long roomId && roomId > 0;
             case ADMIN_INSPECT_ROOM_RESP -> data instanceof AdminLiveMatchDetail d && d.roomId() > 0;
 
             case ADMIN_BROADCAST_REQ -> data instanceof AdminBroadcastRequest r
-                    && isNonEmptyText(r.message(), 500);
+                    && isNonEmptyText(r.message(), MAX_BROADCAST_TEXT);
 
             case ADMIN_LEDGER_PAGE_REQ -> data instanceof PageRequest;
             case ADMIN_LEDGER_PAGE_RESP -> data instanceof PageResult<?> p
@@ -237,7 +324,7 @@ public final class PacketIO {
             return false;
         }
         ChatMessage c = event.message();
-        if (c == null || !isNonEmptyText(c.content(), 500) || c.timestampMillis() <= 0) {
+        if (c == null || !isNonEmptyText(c.content(), "SYSTEM".equals(c.type()) ? MAX_SYSTEM_TEXT : MAX_CHAT_TEXT) || c.timestampMillis() <= 0) {
             return false;
         }
         if ("SYSTEM".equals(c.type())) {

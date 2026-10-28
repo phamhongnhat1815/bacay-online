@@ -26,4 +26,5 @@
 # Runtime and packaged outputs
 dist/
 data/
+logs/
 *.env.ps1

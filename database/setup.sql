@@ -43,8 +43,8 @@ DELIMITER ;
 CALL bacay_migration_add_role();
 DROP PROCEDURE IF EXISTS bacay_migration_add_role;
 
-INSERT IGNORE INTO users (username, password_hash, display_name, email, balance, status, role)
-VALUES ('admin', 'PBKDF2WithHmacSHA256$310000$EfKs/XzG+8Vp5yQhTVKyTQ==$vi9gJIPIqJM3y4yvHlhZFhK41VhlynpSlpcdCwY+aRc=', 'Quản Trị Viên', 'admin@bacay.local', 0.00, 'ACTIVE', 'ADMIN');
+-- Administrator credentials are generated securely by AdminBootstrap on server startup.
+-- No shared default password is installed by SQL.
 
 CREATE TABLE IF NOT EXISTS play_rounds (
  id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -139,7 +139,7 @@ BEGIN
  INSERT IGNORE INTO app_migrations(name) VALUES ('product_starting_points_v1');
  SET apply_grant = ROW_COUNT();
  IF apply_grant = 1 THEN
-  UPDATE users SET balance = 1000.00 WHERE balance = 0.00;
+  UPDATE users SET balance = 1000.00 WHERE balance = 0.00 AND role = 'USER';
  END IF;
  INSERT IGNORE INTO app_migrations(name) VALUES ('m5_initial_points');
  COMMIT;
@@ -148,3 +148,5 @@ END$$
 DELIMITER ;
 CALL bacay_starting_points();
 DROP PROCEDURE IF EXISTS bacay_starting_points;
+
+INSERT IGNORE INTO app_migrations(name) VALUES ('schema_v2_secure_admin');

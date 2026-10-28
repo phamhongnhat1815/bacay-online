@@ -47,10 +47,13 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
-public final class RoomManager implements RoomService {
+public final class RoomManager implements RoomService, AutoCloseable {
     public static final int TABLE_COUNT = 20;
     public static final int AUTO_START_SECONDS = 8;
     public static final int DISCONNECT_GRACE_SECONDS = 15;
@@ -69,6 +72,10 @@ public final class RoomManager implements RoomService {
     private final Map<Long, Long> membership = new HashMap<>();
     private final Map<Long, ArrayDeque<Long>> chatTimes = new HashMap<>();
     private final Map<Long, String> activeRounds = new ConcurrentHashMap<>();
+    // Reservations cover the DB snapshot window, without holding the room monitor during I/O.
+    private final Set<Long> startingUsers = new HashSet<>();
+    private final Set<Long> adjustingUsers = new HashSet<>();
+    private final ExecutorService autoStarts = Executors.newVirtualThreadPerTaskExecutor();
 
     private final int turnTimeoutSeconds = RuntimeSettings.integer(
             "server.properties", "game.turnTimeoutSeconds", 30, 5, 300);
@@ -97,6 +104,8 @@ public final class RoomManager implements RoomService {
         String state = "WAITING";
         String roundId;
         boolean resultSent;
+        boolean journaling;
+        boolean autoStartQueued;
         List<CompletedRound.PrivateHand> hands = List.of();
         final ArrayDeque<ChatMessage> recentChats = new ArrayDeque<>();
 
@@ -136,11 +145,51 @@ public final class RoomManager implements RoomService {
     }
 
     private void ensureNoPendingResult(long userId) throws BUSException {
+        if (adjustingUsers.contains(userId)) {
+            throw fail(ErrorCode.INVALID_STATE, "Số dư đang được điều chỉnh; vui lòng thử lại");
+        }
         if (activeRounds.containsKey(userId)) {
             throw fail(ErrorCode.INVALID_STATE, "Bạn còn điểm đang tham gia ở ván trước; vui lòng chờ ván đó kết thúc");
         }
         if (persistence != null && persistence.pendingFor(userId)) {
             throw fail(ErrorCode.INVALID_STATE, "Kết quả ván trước đang được lưu vào CSDL; vui lòng thử lại sau vài giây");
+        }
+    }
+
+    /** Coordinates admin adjustments with both active rounds and in-flight start snapshots. */
+    public void adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason)
+            throws BUSException {
+        if (users == null) {
+            throw fail(ErrorCode.INTERNAL_ERROR, "Chưa cấu hình dịch vụ tài khoản");
+        }
+        synchronized (this) {
+            ensureNoPendingResult(targetUserId);
+            if (startingUsers.contains(targetUserId)) {
+                throw fail(ErrorCode.INVALID_STATE, "Người chơi đang bắt đầu ván; không thể điều chỉnh số dư");
+            }
+            adjustingUsers.add(targetUserId);
+        }
+        try {
+            users.adjustBalanceForAdmin(adminId, targetUserId, delta, reason);
+            UserDTO fresh = users.getProfile(targetUserId);
+            synchronized (this) {
+                Long roomId = membership.get(targetUserId);
+                if (roomId != null) {
+                    Room room = rooms.get(roomId);
+                    Member member = room.members.get(targetUserId);
+                    if (member != null) {
+                        member.user = fresh;
+                        member.ready = false;
+                        room.version++;
+                        checkAndStartAutoCountdown(room);
+                        notifyRoomUpdated(room);
+                    }
+                }
+            }
+        } finally {
+            synchronized (this) {
+                adjustingUsers.remove(targetUserId);
+            }
         }
     }
 
@@ -179,6 +228,8 @@ public final class RoomManager implements RoomService {
 
                 if (room.roundId != null && engine.isRoundActive(room.roundId)) {
                     try {
+                        sendPrivatePacket(actor.userId(), PacketType.START_GAME,
+                                new GameStartInfo(room.id, room.roundId, 1));
                         sendPrivatePacket(
                                 actor.userId(),
                                 PacketType.GAME_UPDATED,
@@ -202,17 +253,19 @@ public final class RoomManager implements RoomService {
         }
 
         ensureOutsideRoom(actor.userId());
-        ensureNoPendingResult(actor.userId());
 
         Room room = rooms.get(request.roomId());
         if (room == null) {
             throw fail(ErrorCode.ROOM_NOT_FOUND, "Bàn chơi không tồn tại");
         }
+        RecentRoom recent = recentRoomHistory.get(actor.userId());
+        boolean isRejoiningRecentRoom = recent != null
+                && recent.roomId == request.roomId()
+                && (System.nanoTime() - recent.timestampNanos <= TimeUnit.SECONDS.toNanos(DISCONNECT_GRACE_SECONDS));
+        boolean viewingOwnActiveRound = isRejoiningRecentRoom && room.roundId != null
+                && room.roundId.equals(activeRounds.get(actor.userId()));
+        if (!viewingOwnActiveRound) ensureNoPendingResult(actor.userId());
         if (!"WAITING".equals(room.state)) {
-            RecentRoom recent = recentRoomHistory.get(actor.userId());
-            boolean isRejoiningRecentRoom = recent != null
-                    && recent.roomId == request.roomId()
-                    && (System.nanoTime() - recent.timestampNanos <= TimeUnit.SECONDS.toNanos(DISCONNECT_GRACE_SECONDS));
             if (!isRejoiningRecentRoom) {
                 throw fail(ErrorCode.ROOM_NOT_WAITING, "Bàn chơi đang diễn ra ván bài");
             }
@@ -222,7 +275,21 @@ public final class RoomManager implements RoomService {
         }
 
         recentRoomHistory.remove(actor.userId());
-        return addPlayerToRoom(room, actor);
+        addPlayerToRoom(room, actor);
+        if (room.roundId != null) {
+            try {
+                sendPrivatePacket(actor.userId(), PacketType.START_GAME, new GameStartInfo(room.id, room.roundId, 1));
+                sendPrivatePacket(actor.userId(), PacketType.GAME_UPDATED, engine.getPublicSnapshot(room.roundId));
+                sendPrivatePacket(actor.userId(), PacketType.BET_UPDATED, engine.getBetSnapshot(room.roundId));
+                if (room.hands.stream().anyMatch(h -> h.userId() == actor.userId())) {
+                    sendPrivatePacket(actor.userId(), PacketType.PLAYER_STATE,
+                            engine.getPlayerSnapshot(room.roundId, actor.userId()));
+                }
+            } catch (GameEngineException e) {
+                throw fail(e.getErrorCode(), e.getMessage());
+            }
+        }
+        return createRoomSnapshot(room);
     }
 
     private RoomSnapshot addPlayerToRoom(Room room, UserDTO user) {
@@ -240,7 +307,7 @@ public final class RoomManager implements RoomService {
         }
 
         Member member = new Member(user, seatNumber);
-        if (user.balance().compareTo(room.settings.betAmount()) >= 0) {
+        if ("WAITING".equals(room.state) && user.balance().compareTo(room.settings.betAmount()) >= 0) {
             member.ready = true;
         }
         room.members.put(user.userId(), member);
@@ -255,47 +322,50 @@ public final class RoomManager implements RoomService {
     }
 
     @Override
-    public synchronized void leave(long userId) throws BUSException {
-        Room room = requireUserRoom(userId);
-        Member leavingMember = room.members.get(userId);
+    public void leave(long userId) throws BUSException {
+        Room room;
+        synchronized (this) {
+            room = requireUserRoom(userId);
+            Member leavingMember = room.members.get(userId);
 
-        if (room.roundId != null && engine.isRoundActive(room.roundId)) {
-            try {
-                engine.handlePlayerLeft(room.roundId, userId);
-                room.lastActionNanos = System.nanoTime();
-            } catch (GameEngineException e) {
-                throw fail(e.getErrorCode(), e.getMessage());
+            boolean participant = room.hands.stream().anyMatch(h -> h.userId() == userId);
+            if (participant && room.roundId != null && engine.isRoundActive(room.roundId)) {
+                try {
+                    engine.handlePlayerLeft(room.roundId, userId);
+                    room.lastActionNanos = System.nanoTime();
+                } catch (GameEngineException e) {
+                    throw fail(e.getErrorCode(), e.getMessage());
+                }
+            }
+
+            recentRoomHistory.put(userId, new RecentRoom(room.id, System.nanoTime()));
+            room.members.remove(userId);
+            membership.remove(userId);
+            chatTimes.remove(userId);
+
+            if (room.ownerId == userId) {
+                room.ownerId = room.members.isEmpty() ? 0 : room.members.keySet().iterator().next();
+            }
+
+            room.version++;
+            if (room.members.isEmpty()) {
+                room.autoStartDeadlineNanos = 0;
+                resetEmptyTable(room);
+                notifyRoomUpdated(room);
+            } else {
+                checkAndStartAutoCountdown(room);
+                notifyRoomUpdated(room);
+                sendSystemChat(room, leavingMember.user.displayName() + " đã rời bàn");
             }
         }
-
-        recentRoomHistory.put(userId, new RecentRoom(room.id, System.nanoTime()));
-        room.members.remove(userId);
-        membership.remove(userId);
-        chatTimes.remove(userId);
-
-        if (room.ownerId == userId) {
-            room.ownerId = room.members.isEmpty() ? 0 : room.members.keySet().iterator().next();
-        }
-
-        room.version++;
-        if (room.roundId != null) {
-            publishGameUpdate(room);
-        }
-
-        if (room.members.isEmpty()) {
-            room.autoStartDeadlineNanos = 0;
-            resetEmptyTable(room);
-            notifyRoomUpdated(room);
-        } else {
-            checkAndStartAutoCountdown(room);
-            notifyRoomUpdated(room);
-            sendSystemChat(room, leavingMember.user.displayName() + " đã rời bàn");
-        }
+        publishGameUpdate(room);
     }
 
     @Override
     public RoomSnapshot setReady(long userId, boolean ready) throws BUSException {
-        ensureNoPendingResult(userId);
+        synchronized (this) {
+            ensureNoPendingResult(userId);
+        }
         UserDTO freshUser = (users == null) ? null : users.getProfile(userId);
 
         synchronized (this) {
@@ -409,212 +479,210 @@ public final class RoomManager implements RoomService {
 
         List<Long> memberIds;
         long capturedVersion;
+        Room capturedRoom;
         synchronized (this) {
             checkStart(userId);
             Room room = requireUserRoom(userId);
+            capturedRoom = room;
             memberIds = List.copyOf(room.members.keySet());
+            for (long id : memberIds) {
+                if (startingUsers.contains(id) || adjustingUsers.contains(id)) {
+                    throw fail(ErrorCode.INVALID_STATE, "Số dư đang được cập nhật; vui lòng thử lại");
+                }
+            }
+            startingUsers.addAll(memberIds);
             capturedVersion = room.version;
         }
 
-        Map<Long, UserDTO> freshUsers = new LinkedHashMap<>();
-        for (long id : memberIds) {
-            freshUsers.put(id, users.getProfile(id));
-        }
-
-        synchronized (this) {
-            Room room = requireUserRoom(userId);
-            if (room.version != capturedVersion) {
-                throw fail(ErrorCode.INVALID_STATE, "Bàn chơi vừa có thay đổi; hãy thử lại");
+        try {
+            Map<Long, UserDTO> freshUsers = new LinkedHashMap<>();
+            for (long id : memberIds) {
+                freshUsers.put(id, users.getProfile(id));
             }
 
-            for (Member m : room.members.values()) {
-                m.user = freshUsers.get(m.user.userId());
-            }
-
-            checkStart(userId);
-
-            List<RoundParticipant> participants = room.members.values().stream()
-                    .filter(m -> m.user.balance().compareTo(room.settings.betAmount()) >= 0)
-                    .sorted(Comparator.comparingInt(m -> m.seat))
-                    .map(m -> new RoundParticipant(
-                            m.user.userId(),
-                            m.user.username(),
-                            m.user.displayName(),
-                            m.user.balance()
-                    ))
-                    .toList();
-
-            List<RoundParticipant> orderedParticipants = new ArrayList<>(participants);
-            int ownerIndex = -1;
-            for (int i = 0; i < orderedParticipants.size(); i++) {
-                if (orderedParticipants.get(i).userId() == room.ownerId) {
-                    ownerIndex = i;
-                    break;
-                }
-            }
-            if (ownerIndex > 0) {
-                Collections.rotate(orderedParticipants, -ownerIndex);
-            }
-
-            String roundId = UUID.randomUUID().toString();
-            try {
-                engine.initRound(roundId, room.id, orderedParticipants, room.settings.betAmount());
-                for (RoundParticipant p : orderedParticipants) {
-                    activeRounds.put(p.userId(), roundId);
+            synchronized (this) {
+                Room room = requireUserRoom(userId);
+                if (room.version != capturedVersion) {
+                    throw fail(ErrorCode.INVALID_STATE, "Bàn chơi vừa có thay đổi; hãy thử lại");
                 }
 
-                room.roundId = roundId;
-                room.state = "PLAYING";
-                room.autoStartDeadlineNanos = 0;
-                room.afkUsers.clear();
-                room.resultSent = false;
-                room.hands = orderedParticipants.stream()
-                        .map(p -> {
-                            try {
-                                return new CompletedRound.PrivateHand(p.userId(), engine.getPlayerCards(roundId, p.userId()));
-                            } catch (GameEngineException e) {
-                                throw new IllegalStateException(e);
-                            }
-                        })
+                for (Member m : room.members.values()) {
+                    m.user = freshUsers.get(m.user.userId());
+                }
+
+                checkStart(userId);
+
+                List<RoundParticipant> participants = room.members.values().stream()
+                        .filter(m -> m.user.balance().compareTo(room.settings.betAmount()) >= 0)
+                        .sorted(Comparator.comparingInt(m -> m.seat))
+                        .map(m -> new RoundParticipant(
+                                m.user.userId(),
+                                m.user.username(),
+                                m.user.displayName(),
+                                m.user.balance()
+                        ))
                         .toList();
 
-                room.lastActionNanos = System.nanoTime();
-                room.version++;
-                notifyRoomUpdated(room);
-
-                broadcastToRoom(room, PacketType.START_GAME, new GameStartInfo(room.id, roundId, 1));
-
-                for (RoundParticipant p : orderedParticipants) {
-                    sendPrivatePacket(
-                            p.userId(),
-                            PacketType.DEAL_CARD,
-                            new DealCardPayload(roundId, engine.getPlayerCards(roundId, p.userId()), 1)
-                    );
+                List<RoundParticipant> orderedParticipants = new ArrayList<>(participants);
+                int ownerIndex = -1;
+                for (int i = 0; i < orderedParticipants.size(); i++) {
+                    if (orderedParticipants.get(i).userId() == room.ownerId) {
+                        ownerIndex = i;
+                        break;
+                    }
+                }
+                if (ownerIndex > 0) {
+                    Collections.rotate(orderedParticipants, -ownerIndex);
                 }
 
-                publishGameUpdate(room);
+                String roundId = UUID.randomUUID().toString();
+                try {
+                    engine.initRound(roundId, room.id, orderedParticipants, room.settings.betAmount());
+                    for (RoundParticipant p : orderedParticipants) {
+                        activeRounds.put(p.userId(), roundId);
+                    }
+
+                    room.roundId = roundId;
+                    room.state = "PLAYING";
+                    room.autoStartDeadlineNanos = 0;
+                    room.afkUsers.clear();
+                    room.resultSent = false;
+                    room.hands = orderedParticipants.stream()
+                            .map(p -> {
+                                try {
+                                    return new CompletedRound.PrivateHand(p.userId(), engine.getPlayerCards(roundId, p.userId()));
+                                } catch (GameEngineException e) {
+                                    throw new IllegalStateException(e);
+                                }
+                            })
+                            .toList();
+
+                    room.lastActionNanos = System.nanoTime();
+                    room.version++;
+                    notifyRoomUpdated(room);
+
+                    broadcastToRoom(room, PacketType.START_GAME, new GameStartInfo(room.id, roundId, 1));
+
+                    for (RoundParticipant p : orderedParticipants) {
+                        sendPrivatePacket(
+                                p.userId(),
+                                PacketType.DEAL_CARD,
+                                new DealCardPayload(roundId, engine.getPlayerCards(roundId, p.userId()), 1)
+                        );
+                    }
+
+                } catch (GameEngineException e) {
+                    throw fail(e.getErrorCode(), e.getMessage());
+                }
+            }
+            publishGameUpdate(capturedRoom);
+        } finally {
+            synchronized (this) {
+                startingUsers.removeAll(memberIds);
+            }
+        }
+    }
+
+    public void action(long userId, GameActionRequest request) throws BUSException {
+        Room room;
+        synchronized (this) {
+            room = requireUserRoom(userId);
+            if (room.roundId == null || !room.roundId.equals(request.roundId())) {
+                throw fail(ErrorCode.STALE_ROUND, "Mã ván chơi không khớp với ván đang diễn ra");
+            }
+
+            try {
+                engine.handleAction(room.roundId, userId, request.action(), request.raiseTo());
+                room.lastActionNanos = System.nanoTime();
+                room.afkUsers.remove(userId);
+
             } catch (GameEngineException e) {
                 throw fail(e.getErrorCode(), e.getMessage());
             }
         }
-    }
-
-    public synchronized void action(long userId, GameActionRequest request) throws BUSException {
-        Room room = requireUserRoom(userId);
-        if (room.roundId == null || !room.roundId.equals(request.roundId())) {
-            throw fail(ErrorCode.STALE_ROUND, "Mã ván chơi không khớp với ván đang diễn ra");
-        }
-
-        try {
-            engine.handleAction(room.roundId, userId, request.action(), request.raiseTo());
-            room.lastActionNanos = System.nanoTime();
-            room.afkUsers.remove(userId);
-
-            publishGameUpdate(room);
-        } catch (GameEngineException e) {
-            throw fail(e.getErrorCode(), e.getMessage());
-        }
+        publishGameUpdate(room);
     }
 
     private void publishGameUpdate(Room room) {
-        if (room.roundId == null) {
-            return;
-        }
-
-        try {
-            var stateSnapshot = engine.getPublicSnapshot(room.roundId);
-            broadcastToRoom(room, PacketType.GAME_UPDATED, stateSnapshot);
-            broadcastToRoom(room, PacketType.BET_UPDATED, engine.getBetSnapshot(room.roundId));
-
-            for (CompletedRound.PrivateHand hand : room.hands) {
-                if (room.members.containsKey(hand.userId())) {
-                    sendPrivatePacket(
-                            hand.userId(),
-                            PacketType.PLAYER_STATE,
-                            engine.getPlayerSnapshot(room.roundId, hand.userId())
-                    );
-                }
-            }
-
-            if (engine.isRoundActive(room.roundId)) {
-                return;
-            }
-
-            RoundResult result = engine.getRoundResult(room.roundId);
-            if (!room.resultSent) {
-                try {
-                    persistence.enqueue(new CompletedRound(
-                            result,
-                            room.id,
-                            room.settings.roomName(),
-                            room.settings.betAmount(),
-                            room.hands
-                    ));
-                } catch (IOException e) {
-                    System.err.println("[JOURNAL] Không thể ghi tệp journal cho roundId=" + room.roundId);
-                    return;
-                }
-
-                for (var p : result.playerResults()) {
-                    activeRounds.remove(p.userId(), room.roundId);
-                }
-
-                room.resultSent = true;
-                broadcastToRoom(room, PacketType.ROUND_RESULT, result);
-                broadcastToRoom(
-                        room,
-                        PacketType.PLAY_AGAIN_PROMPT,
-                        new PlayAgainPrompt(
-                                room.roundId,
-                                "Kết quả hiển thị trong " + RoundResult.DISPLAY_SECONDS + " giây, sau đó chọn sẵn sàng để chơi tiếp"
-                        )
-                );
-
-                for (Member m : room.members.values()) {
-                    m.ready = false;
-                    for (var p : result.playerResults()) {
-                        if (p.userId() == m.user.userId()) {
-                            UserDTO u = m.user;
-                            BigDecimal freshBalance = engine.getPlayerSnapshot(room.roundId, u.userId()).myBalance();
-                            m.user = new UserDTO(
-                                    u.userId(),
-                                    u.username(),
-                                    u.displayName(),
-                                    u.email(),
-                                    u.avatarUrl(),
-                                    freshBalance,
-                                    u.status(),
-                                    u.totalGames(),
-                                    u.totalWins(),
-                                    u.totalLosses()
-                            );
-                        }
+        CompletedRound completed;
+        String roundId;
+        synchronized (this) {
+            if (room.roundId == null || room.journaling) return;
+            try {
+                var stateSnapshot = engine.getPublicSnapshot(room.roundId);
+                broadcastToRoom(room, PacketType.GAME_UPDATED, stateSnapshot);
+                broadcastToRoom(room, PacketType.BET_UPDATED, engine.getBetSnapshot(room.roundId));
+                for (CompletedRound.PrivateHand hand : room.hands) {
+                    if (room.members.containsKey(hand.userId())) {
+                        sendPrivatePacket(hand.userId(), PacketType.PLAYER_STATE,
+                                engine.getPlayerSnapshot(room.roundId, hand.userId()));
                     }
                 }
-
-                System.out.println("[GAME] " + result.roundStatus() + " roomId=" + room.id + " roundId=" + room.roundId);
-
-                engine.cleanupRound(room.roundId);
-                room.roundId = null;
-                room.state = "RESULT";
-                room.resultUntilNanos = resultClock.getAsLong() + TimeUnit.SECONDS.toNanos(RoundResult.DISPLAY_SECONDS);
-                resetEmptyTable(room);
-                room.version++;
-                notifyRoomUpdated(room);
+                if (engine.isRoundActive(room.roundId) || room.resultSent) return;
+                roundId = room.roundId;
+                completed = new CompletedRound(engine.getRoundResult(roundId), room.id,
+                        room.settings.roomName(), room.settings.betAmount(), room.hands);
+                room.journaling = true;
+            } catch (GameEngineException e) {
+                throw new IllegalStateException(e);
             }
-        } catch (GameEngineException e) {
-            throw new IllegalStateException(e);
+        }
+
+        // The journal must be durable before releasing point reservations or publishing the result.
+        // Disk I/O runs outside the monitor so other tables can continue playing.
+        try {
+            if (persistence == null) throw new IOException("Chưa cấu hình journal kết quả");
+            persistence.enqueue(completed);
+        } catch (IOException | RuntimeException e) {
+            synchronized (this) {
+                room.journaling = false;
+            }
+            System.err.println("[JOURNAL] Không thể ghi kết quả roundId=" + roundId + " cause="
+                    + e.getClass().getSimpleName());
+            return; // The engine and reservations stay intact; tick will retry.
+        }
+
+        synchronized (this) {
+            room.journaling = false;
+            if (!roundId.equals(room.roundId) || room.resultSent) return;
+            RoundResult result = completed.result();
+            for (var p : result.playerResults()) activeRounds.remove(p.userId(), roundId);
+            room.resultSent = true;
+            broadcastToRoom(room, PacketType.ROUND_RESULT, result);
+            broadcastToRoom(room, PacketType.PLAY_AGAIN_PROMPT,
+                    new PlayAgainPrompt(roundId, "Kết quả hiển thị trong " + RoundResult.DISPLAY_SECONDS
+                            + " giây, sau đó chọn sẵn sàng để chơi tiếp"));
+            for (Member m : room.members.values()) {
+                m.ready = false;
+                if (result.playerResults().stream().anyMatch(p -> p.userId() == m.user.userId())) {
+                    UserDTO u = m.user;
+                    try {
+                        BigDecimal balance = engine.getPlayerSnapshot(roundId, u.userId()).myBalance();
+                        m.user = new UserDTO(u.userId(), u.username(), u.displayName(), u.email(),
+                                u.avatarUrl(), balance, u.status(), u.role(), u.totalGames(),
+                                u.totalWins(), u.totalLosses());
+                    } catch (GameEngineException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+            }
+            System.out.println("[GAME] " + result.roundStatus() + " roomId=" + room.id + " roundId=" + roundId);
+            engine.cleanupRound(roundId);
+            room.roundId = null;
+            room.hands = List.of();
+            room.state = "RESULT";
+            room.resultUntilNanos = resultClock.getAsLong()
+                    + TimeUnit.SECONDS.toNanos(RoundResult.DISPLAY_SECONDS);
+            resetEmptyTable(room);
+            room.version++;
+            notifyRoomUpdated(room);
         }
     }
-
     private void checkAndStartAutoCountdown(Room room) {
         if (!"WAITING".equals(room.state)) {
             return;
         }
-        List<Member> eligible = room.members.values().stream()
-                .filter(m -> m.ready && m.user.balance().compareTo(room.settings.betAmount()) >= 0)
-                .toList();
-        if (eligible.size() >= room.settings.minPlayers()) {
+        if (canAutoStart(room)) {
             if (room.autoStartDeadlineNanos == 0) {
                 room.autoStartDeadlineNanos = resultClock.getAsLong() + TimeUnit.SECONDS.toNanos(AUTO_START_SECONDS);
             }
@@ -625,94 +693,96 @@ public final class RoomManager implements RoomService {
         }
     }
 
-    public synchronized void tick() {
-        for (Room room : List.copyOf(rooms.values())) {
-            if ("RESULT".equals(room.state) && resultClock.getAsLong() >= room.resultUntilNanos) {
-                room.state = "WAITING";
-                room.resultUntilNanos = 0;
+    private boolean canAutoStart(Room room) {
+        List<Member> eligible = room.members.values().stream()
+                .filter(m -> m.user.balance().compareTo(room.settings.betAmount()) >= 0).toList();
+        return eligible.size() >= room.settings.minPlayers() && eligible.stream().allMatch(m -> {
+            long id = m.user.userId();
+            return m.ready && !activeRounds.containsKey(id) && !startingUsers.contains(id)
+                    && !adjustingUsers.contains(id) && (persistence == null || !persistence.pendingFor(id));
+        });
+    }
 
-                for (Long afkId : List.copyOf(room.afkUsers)) {
-                    Member afkMember = room.members.get(afkId);
-                    if (afkMember != null) {
-                        String kickNotice = "Bạn đã được chuyển về sảnh do không thao tác (treo máy) để bảo vệ số dư tài khoản.";
-                        sendPrivatePacket(afkId, PacketType.LEAVE_ROOM, kickNotice);
-                        sendSystemChat(room, afkMember.user.displayName() + " đã được chuyển về sảnh do không thao tác (treo máy).");
-                        try {
-                            leave(afkId);
-                        } catch (BUSException ignored) {}
-                    }
-                }
-                room.afkUsers.clear();
-
-                for (Member m : List.copyOf(room.members.values())) {
-                    if (m.user.balance().compareTo(room.settings.betAmount()) < 0) {
-                        String balanceNotice = "Số dư không đủ mức cược tối thiểu (" + room.settings.betAmount() + " điểm), bạn đã được chuyển về sảnh.";
-                        sendPrivatePacket(m.user.userId(), PacketType.LEAVE_ROOM, balanceNotice);
-                        sendSystemChat(room, m.user.displayName() + " không đủ số dư cược sàn và đã được chuyển về sảnh.");
-                        try {
-                            leave(m.user.userId());
-                        } catch (BUSException ignored) {}
-                    }
-                }
-
-                for (Member m : room.members.values()) {
-                    m.ready = true;
-                }
-
-                checkAndStartAutoCountdown(room);
-                room.version++;
-                notifyRoomUpdated(room);
-            }
-
-            if ("WAITING".equals(room.state) && room.autoStartDeadlineNanos > 0) {
-                List<Member> eligible = room.members.values().stream()
-                        .filter(m -> m.ready && m.user.balance().compareTo(room.settings.betAmount()) >= 0)
-                        .toList();
-                if (eligible.size() >= room.settings.minPlayers()) {
-                    if (resultClock.getAsLong() >= room.autoStartDeadlineNanos) {
-                        room.autoStartDeadlineNanos = 0;
-                        try {
-                            start(room.ownerId);
-                        } catch (Exception e) {
-                            System.err.println("[ROOM] Tự động bắt đầu ván roomId=" + room.id + " lỗi: " + e.getMessage());
+    public void tick() {
+        List<Room> publish = new ArrayList<>();
+        List<Room> start = new ArrayList<>();
+        synchronized (this) {
+            for (Room room : rooms.values()) {
+                if ("RESULT".equals(room.state) && resultClock.getAsLong() >= room.resultUntilNanos) {
+                    room.state = "WAITING";
+                    room.resultUntilNanos = 0;
+                    List<Long> remove = room.members.values().stream()
+                            .filter(m -> room.afkUsers.contains(m.user.userId())
+                                    || m.user.balance().compareTo(room.settings.betAmount()) < 0)
+                            .map(m -> m.user.userId()).toList();
+                    for (long id : remove) {
+                        sendPrivatePacket(id, PacketType.LEAVE_ROOM,
+                                "Bạn đã được chuyển về sảnh do hết thời gian thao tác hoặc không đủ điểm cược.");
+                        // A RESULT room no longer has an engine round, so this performs only in-memory cleanup.
+                        try { leave(id); }
+                        catch (BUSException e) {
+                            System.err.println("[ROOM] Không thể dọn ghế userId=" + id + " roomId=" + room.id);
                         }
-                    } else {
-                        room.version++;
-                        notifyRoomUpdated(room);
                     }
-                } else {
-                    room.autoStartDeadlineNanos = 0;
+                    room.afkUsers.clear();
+                    for (Member m : room.members.values()) m.ready = true;
                     room.version++;
                     notifyRoomUpdated(room);
                 }
-            }
-
-            if (room.roundId == null) {
-                continue;
-            }
-
-            try {
-                if (!engine.isRoundActive(room.roundId)) {
-                    publishGameUpdate(room);
-                    continue;
-                }
-
-                if (System.nanoTime() - room.lastActionNanos >= TimeUnit.SECONDS.toNanos(turnTimeoutSeconds)) {
-                    Long currentTurnId = engine.getPublicSnapshot(room.roundId).currentTurnUserId();
-                    if (currentTurnId != null) {
-                        engine.handleAction(room.roundId, currentTurnId, BetAction.FOLD, null);
-                        room.lastActionNanos = System.nanoTime();
-                        room.afkUsers.add(currentTurnId);
-
-                        publishGameUpdate(room);
+                if ("WAITING".equals(room.state) && !room.autoStartQueued) {
+                    checkAndStartAutoCountdown(room);
+                    if (room.autoStartDeadlineNanos > 0) {
+                        if (resultClock.getAsLong() >= room.autoStartDeadlineNanos) {
+                            room.autoStartDeadlineNanos = 0;
+                            room.autoStartQueued = true;
+                            start.add(room);
+                        } else {
+                            room.version++;
+                            notifyRoomUpdated(room);
+                        }
                     }
                 }
-            } catch (Exception e) {
-                System.err.println("[GAME] Lỗi tick tại roomId=" + room.id + ": " + e.getClass().getSimpleName());
+                if (room.roundId == null || room.journaling) continue;
+                try {
+                    if (!engine.isRoundActive(room.roundId)) {
+                        publish.add(room);
+                    } else if (System.nanoTime() - room.lastActionNanos
+                            >= TimeUnit.SECONDS.toNanos(turnTimeoutSeconds)) {
+                        Long current = engine.getPublicSnapshot(room.roundId).currentTurnUserId();
+                        if (current != null) {
+                            engine.handleAction(room.roundId, current, BetAction.FOLD, null);
+                            room.lastActionNanos = System.nanoTime();
+                            room.afkUsers.add(current);
+                            publish.add(room);
+                        }
+                    }
+                } catch (GameEngineException e) {
+                    System.err.println("[GAME] Lỗi tick roomId=" + room.id + " code=" + e.getErrorCode());
+                }
+            }
+        }
+        for (Room room : publish) publishGameUpdate(room);
+        for (Room room : start) {
+            try {
+                autoStarts.execute(() -> {
+                    long owner;
+                    synchronized (this) { owner = room.ownerId; }
+                    try { start(owner); }
+                    catch (BUSException | RuntimeException e) {
+                        synchronized (this) {
+                            sendSystemChat(room, "Chưa thể tự động bắt đầu ván; vui lòng kiểm tra trạng thái sẵn sàng.");
+                        }
+                        System.err.println("[ROOM] Tự động bắt đầu lỗi roomId=" + room.id
+                                + " cause=" + e.getClass().getSimpleName());
+                    } finally {
+                        synchronized (this) { room.autoStartQueued = false; }
+                    }
+                });
+            } catch (RejectedExecutionException e) {
+                synchronized (this) { room.autoStartQueued = false; }
             }
         }
     }
-
     @Override
     public synchronized void chat(long userId, String content) throws BUSException {
         Room room = requireUserRoom(userId);
@@ -752,19 +822,19 @@ public final class RoomManager implements RoomService {
     }
 
     @Override
-    public synchronized void onDisconnected(long userId) {
-        if (membership.containsKey(userId)) {
-            try {
-                leave(userId);
-            } catch (BUSException e) {
+    public void onDisconnected(long userId) {
+        try {
+            leave(userId);
+        } catch (BUSException e) {
+            if (e.getErrorCode() != ErrorCode.NOT_IN_ROOM) {
                 System.err.println("[ROOM] Dọn dẹp lỗi khi ngắt kết nối userId=" + userId);
             }
         }
-        chatTimes.remove(userId);
+        synchronized (this) { chatTimes.remove(userId); }
     }
 
     @Override
-    public synchronized void onConnectionLost(long userId) {
+    public void onConnectionLost(long userId) {
         onDisconnected(userId);
     }
 
@@ -897,27 +967,41 @@ public final class RoomManager implements RoomService {
         return count;
     }
 
-    public synchronized void forceResetRoom(long roomId, String reason) throws BUSException {
-        Room r = rooms.get(roomId);
-        if (r == null) {
-            throw fail(ErrorCode.ROOM_NOT_FOUND, "Không tìm thấy bàn: " + roomId);
+    public void forceResetRoom(long roomId, String reason) throws BUSException {
+        Room r;
+        synchronized (this) {
+            r = rooms.get(roomId);
+            if (r == null) {
+                throw fail(ErrorCode.ROOM_NOT_FOUND, "Không tìm thấy bàn: " + roomId);
+            }
+            if (r.journaling || r.autoStartQueued || r.members.keySet().stream().anyMatch(startingUsers::contains)) {
+                throw fail(ErrorCode.INVALID_STATE, "Bàn đang bắt đầu hoặc lưu kết quả; vui lòng thử lại sau");
+            }
+            if (r.roundId != null) {
+                try { engine.cancelRound(r.roundId); }
+                catch (GameEngineException e) { throw fail(e.getErrorCode(), e.getMessage()); }
+            }
         }
-        if (r.roundId != null) {
-            activeRounds.remove(roomId);
-            r.roundId = null;
-        }
-        r.state = "WAITING";
-        r.resultUntilNanos = 0;
-        r.resultSent = false;
-        r.hands = List.of();
-        for (Member m : r.members.values()) {
-            m.ready = false;
-        }
-        r.version++;
+        publishGameUpdate(r);
+        synchronized (this) {
+            if (r.roundId != null) {
+                throw fail(ErrorCode.INTERNAL_ERROR, "Chưa ghi được kết quả hủy ván; bàn được giữ để thử lại an toàn");
+            }
+            r.state = "WAITING";
+            r.resultUntilNanos = 0;
+            r.resultSent = false;
+            r.hands = List.of();
+            r.autoStartDeadlineNanos = 0;
+            r.afkUsers.clear();
+            for (Member m : r.members.values()) {
+                m.ready = false;
+            }
+            r.version++;
 
-        notifyRoomUpdated(r);
-        sendSystemChat(r, "Bàn đã được Admin giải tán / đặt lại: " + (reason != null ? reason : "Lý do quản trị"));
-        events.lobbyUpdated(listRooms());
+            notifyRoomUpdated(r);
+            sendSystemChat(r, "Bàn đã được Admin giải tán / đặt lại: " + (reason != null ? reason : "Lý do quản trị"));
+            events.lobbyUpdated(listRooms());
+        }
     }
 
     public synchronized AdminLiveMatchDetail getAdminRoomLiveDetail(long roomId) throws BUSException {
@@ -1043,5 +1127,15 @@ public final class RoomManager implements RoomService {
 
     private static BUSException fail(ErrorCode code, String message) {
         return new BUSException(code, message);
+    }
+
+    @Override
+    public void close() {
+        autoStarts.shutdownNow();
+        try {
+            autoStarts.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

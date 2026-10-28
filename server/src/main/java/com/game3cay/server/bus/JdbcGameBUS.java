@@ -32,15 +32,35 @@ import java.util.Set;
 
 public final class JdbcGameBUS implements GameBUS {
     private final ConnectionProvider connections;
+    private volatile Boolean roleColumn;
+    private record CachedLeaderboard(PageResult<LeaderboardItem> result, long expiresAtNanos) {}
+    private final java.util.concurrent.ConcurrentHashMap<String, CachedLeaderboard> leaderboardCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public JdbcGameBUS(ConnectionProvider connections) {
         this.connections = Objects.requireNonNull(connections, "connections không được null");
     }
 
     public void checkSchema() throws SQLException {
-        try (Connection conn = connections.open();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT round_id FROM play_rounds WHERE 1=0")) {
+        Map<String, String> required = Map.of(
+                "users", "id,username,password_hash,display_name,email,avatar_url,balance,status,role,total_games,total_wins,total_losses,created_at",
+                "play_rounds", "id,round_id,content_hash,runtime_room_id,room_name,ante,status,ended_at",
+                "play_results", "round_id,user_id,display_name,placement,outcome,profit,hand_type,score",
+                "play_cards", "round_id,user_id,position_no,rank_name,suit_name",
+                "play_bets", "round_id,sequence_no,user_id,action,total_bet,added_amount,created_at",
+                "play_pots", "round_id,pot_no,amount",
+                "play_pot_players", "round_id,pot_no,user_id",
+                "play_ledger", "round_id,user_id,delta,balance_before,balance_after",
+                "admin_adjustments", "id,adjustment_id,admin_user_id,target_user_id,delta,balance_before,balance_after,reason,created_at");
+        try (Connection conn = connections.open()) {
+            for (var table : required.entrySet()) {
+                try (Statement stmt = conn.createStatement();
+                     ResultSet ignored = stmt.executeQuery("SELECT " + table.getValue() + " FROM " + table.getKey() + " WHERE 1=0")) {}
+            }
+            try (Statement stmt = conn.createStatement();
+                 ResultSet migration = stmt.executeQuery("SELECT name FROM app_migrations WHERE name='schema_v2_secure_admin'")) {
+                if (!migration.next()) throw new SQLException("Schema chưa cập nhật; hãy chạy database/setup.sql trước khi mở server");
+            }
+            roleColumn = true;
         }
     }
 
@@ -78,6 +98,7 @@ public final class JdbcGameBUS implements GameBUS {
                 insertSidePots(conn, result);
 
                 conn.commit();
+                leaderboardCache.clear();
             } catch (Exception e) {
                 try {
                     conn.rollback();
@@ -366,17 +387,12 @@ public final class JdbcGameBUS implements GameBUS {
     @Override
     public PageResult<LeaderboardItem> getLeaderboard(int page, int pageSize) throws BUSException {
         validatePagination(page, pageSize);
+        String cacheKey = page + ":" + pageSize;
+        CachedLeaderboard cached = leaderboardCache.get(cacheKey);
+        if (cached != null && System.nanoTime() < cached.expiresAtNanos()) return cached.result();
 
         try (Connection conn = connections.open()) {
-            boolean hasRole = false;
-            try (PreparedStatement check = conn.prepareStatement(
-                    "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE UPPER(TABLE_NAME) = 'USERS' AND UPPER(COLUMN_NAME) = 'ROLE'")) {
-                try (ResultSet rs = check.executeQuery()) {
-                    if (rs.next()) {
-                        hasRole = true;
-                    }
-                }
-            } catch (SQLException ignored) {}
+            boolean hasRole = hasRoleColumn(conn);
 
             String countSql = hasRole ? "SELECT COUNT(*) FROM users WHERE role = 'USER'" : "SELECT COUNT(*) FROM users";
             long totalItems;
@@ -422,9 +438,31 @@ public final class JdbcGameBUS implements GameBUS {
             }
 
             int totalPages = PageResult.calcTotalPages(totalItems, pageSize);
-            return new PageResult<>(List.copyOf(items), page, pageSize, totalItems, totalPages);
+            PageResult<LeaderboardItem> result = new PageResult<>(List.copyOf(items), page, pageSize, totalItems, totalPages);
+            if (leaderboardCache.size() >= 64) leaderboardCache.clear();
+            leaderboardCache.put(cacheKey, new CachedLeaderboard(result, System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3)));
+            return result;
         } catch (SQLException e) {
             throw new BUSException(ErrorCode.INTERNAL_ERROR, "Không thể tải bảng xếp hạng", e);
+        }
+    }
+
+    private boolean hasRoleColumn(Connection connection) throws SQLException {
+        Boolean cached = roleColumn;
+        if (cached != null) return cached;
+        synchronized (this) {
+            if (roleColumn == null) {
+                boolean found = false;
+                // Compatibility for isolated test fixtures; production checkSchema requires role.
+                try (var columns = connection.getMetaData().getColumns(connection.getCatalog(), null, null, null)) {
+                    while (columns.next()) {
+                        if ("users".equalsIgnoreCase(columns.getString("TABLE_NAME"))
+                                && "role".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) { found = true; break; }
+                    }
+                }
+                roleColumn = found;
+            }
+            return roleColumn;
         }
     }
 }

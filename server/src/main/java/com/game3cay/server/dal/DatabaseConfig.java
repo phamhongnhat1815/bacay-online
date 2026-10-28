@@ -1,7 +1,5 @@
 package com.game3cay.server.dal;
 
-import java.sql.DriverManager;
-import java.util.Properties;
 
 public final class DatabaseConfig {
     private static final String DEFAULT_DB_URL =
@@ -21,10 +19,20 @@ public final class DatabaseConfig {
         }
 
         String password = System.getenv().getOrDefault("BACAY_DB_PASSWORD", "");
-        Properties properties = new Properties();
-        properties.setProperty("user", user);
-        properties.setProperty("password", password);
+        return bounded(url, user, password,
+                environmentInteger("BACAY_DB_MAX_CONNECTIONS", 12, 1, 64),
+                environmentInteger("BACAY_DB_ACQUIRE_TIMEOUT_MS", 5000, 250, 60000));
+    }
 
-        return () -> DriverManager.getConnection(url, properties);
+    public static ConnectionProvider bounded(String url, String user, String password,
+                                              int maximumConnections, long acquireTimeoutMs) {
+        return new JdbcConnectionProvider(url, user, password, maximumConnections, acquireTimeoutMs);
+    }
+
+    private static int environmentInteger(String name, int fallback, int min, int max) {
+        String configured = System.getenv(name);
+        int value = configured == null || configured.isBlank() ? fallback : Integer.parseInt(configured);
+        if (value < min || value > max) throw new IllegalArgumentException(name + " phải từ " + min + " đến " + max);
+        return value;
     }
 }

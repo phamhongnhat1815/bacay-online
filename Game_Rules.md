@@ -149,4 +149,5 @@ flowchart TD
 
 ### 5.3. Mất Kết Nối & Hủy Ván
 - Người chơi bị rớt mạng hoặc tắt ứng dụng giữa ván: Hệ thống xem như người đó đã **Úp bài**; số điểm đã cược vẫn ở trên bàn.
-- Nếu số lượng người chơi kết nối hợp lệ trong bàn giảm xuống dưới 2 người trước khi ván hoàn tất, ván bài sẽ được đánh dấu là **CANCELLED**; toàn bộ số điểm cược trong ván được **hoàn trả 100%** về tài khoản của từng người.
+- Rời bàn hoặc mất mạng không tự hủy ván. Ván tiếp tục với phần cược đã đặt; nếu chỉ còn một người chưa úp bài thì người đó thắng theo mục 5.1. Người đã rời bàn vẫn được kết toán trong kết quả ván.
+- Chỉ thao tác hủy ván có chủ đích của quản trị viên mới tạo kết quả **CANCELLED** và hoàn lại toàn bộ cược của ván. Máy chủ phải ghi journal kết quả hủy trước khi giải phóng khóa điểm và đặt lại bàn.

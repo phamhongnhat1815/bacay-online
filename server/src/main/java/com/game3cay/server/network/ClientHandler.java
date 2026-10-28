@@ -36,8 +36,6 @@ import com.game3cay.shared.network.PacketType;
 import com.game3cay.shared.network.RuntimeSettings;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.math.BigDecimal;
 import java.net.Socket;
 import java.util.Collections;
@@ -56,6 +54,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class ClientHandler implements Runnable {
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(ClientHandler.class.getName());
     private static final int HEARTBEAT_INTERVAL = RuntimeSettings.integer(
             "server.properties", "heartbeat.intervalSeconds", 5, 1, 60);
 
@@ -92,7 +91,7 @@ public final class ClientHandler implements Runnable {
     private final ScheduledExecutorService heartbeat =
             Executors.newSingleThreadScheduledExecutor(task -> createDaemonThread(task, "server-heartbeat"));
 
-    private ObjectOutputStream output;
+    private PacketIO.Output output;
     private UserDTO currentUser;
 
     public ClientHandler(Socket socket, UserBUS users, SessionRegistry sessions, RoomManager rooms) {
@@ -118,11 +117,13 @@ public final class ClientHandler implements Runnable {
         try (socket) {
             socket.setSoTimeout(5000);
 
-            output = new ObjectOutputStream(socket.getOutputStream());
+            if (socket instanceof javax.net.ssl.SSLSocket ssl) ssl.startHandshake();
+            socket.setTcpNoDelay(true);
+            output = PacketIO.openOutput(socket);
             output.flush();
 
-            ObjectInputStream input = PacketIO.openInput(socket);
-            socket.setSoTimeout(0);
+            PacketIO.Input input = PacketIO.openInput(socket);
+            input.setIdleTimeoutMillis(HEARTBEAT_TIMEOUT * 1000);
 
             lastPong.set(System.nanoTime());
             send(new Packet(PacketType.SERVER_NOTICE, null, "Đã kết nối máy chủ Ba Cây, giao thức v" + Packet.VERSION));
@@ -133,6 +134,7 @@ public final class ClientHandler implements Runnable {
                 handlePacket(PacketIO.read(input));
             }
         } catch (IOException | ClassNotFoundException | RuntimeException e) {
+            if (!closed.get()) LOG.log(java.util.logging.Level.FINE, "Connection closed: " + socket.getRemoteSocketAddress(), e);
         } finally {
             close();
             clearSession();
@@ -183,6 +185,7 @@ public final class ClientHandler implements Runnable {
                         throw fail(ErrorCode.INVALID_STATE, "Vui lòng đăng xuất trước khi đăng ký tài khoản mới");
                     }
                     RegisterRequest req = (RegisterRequest) packet.getData();
+                    checkAuthenticationLimit(req.username(), true);
                     UserDTO created = requireUserBUS().register(
                             req.username(),
                             req.password(),
@@ -197,6 +200,7 @@ public final class ClientHandler implements Runnable {
                         throw fail(ErrorCode.ALREADY_LOGGED_IN, "Kết nối này đã đăng nhập tài khoản");
                     }
                     AuthRequest req = (AuthRequest) packet.getData();
+                    checkAuthenticationLimit(req.username(), false);
                     UserDTO authenticated = requireUserBUS().authenticate(req.username(), req.password());
 
                     if (!sessions.bind(authenticated.userId(), this)) {
@@ -291,7 +295,9 @@ public final class ClientHandler implements Runnable {
 
                 case CHANGE_PASSWORD -> {
                     ChangePasswordRequest req = (ChangePasswordRequest) packet.getData();
-                    requireUserBUS().changePassword(requireAuthenticatedUser().userId(), req.currentPassword(), req.newPassword());
+                    UserDTO actor = requireAuthenticatedUser();
+                    checkAuthenticationLimit(actor.username(), false);
+                    requireUserBUS().changePassword(actor.userId(), req.currentPassword(), req.newPassword());
                     sendAck(requestId);
                 }
 
@@ -342,7 +348,7 @@ public final class ClientHandler implements Runnable {
                 case ADMIN_ADJUST_BALANCE_REQ -> {
                     UserDTO admin = requireAdminUser();
                     AdminAdjustBalanceRequest req = (AdminAdjustBalanceRequest) packet.getData();
-                    requireUserBUS().adjustBalanceForAdmin(admin.userId(), req.userId(), req.delta(), req.reason());
+                    rooms.adjustBalanceForAdmin(admin.userId(), req.userId(), req.delta(), req.reason());
                     sendAck(requestId);
                 }
 
@@ -377,7 +383,10 @@ public final class ClientHandler implements Runnable {
                             "SYSTEM",
                             System.currentTimeMillis()
                     );
-                    sessions.broadcastAll(Packet.serverPush(PacketType.CHAT_SYSTEM, new RoomChatEvent(0L, broadcastMsg)));
+                    Packet broadcast = Packet.serverPush(PacketType.CHAT_SYSTEM, new RoomChatEvent(0L, broadcastMsg));
+                    try { PacketIO.validate(broadcast); }
+                    catch (IOException e) { throw fail(ErrorCode.MESSAGE_TOO_LONG, "Nội dung thông báo vượt giới hạn"); }
+                    sessions.broadcastAll(broadcast);
                     sendAck(requestId);
                 }
 
@@ -393,6 +402,7 @@ public final class ClientHandler implements Runnable {
         } catch (BUSException e) {
             sendError(requestId, e.getErrorCode(), e.getMessage());
         } catch (RuntimeException e) {
+            LOG.log(java.util.logging.Level.WARNING, "Request failed: type=" + packet.getType() + " requestId=" + requestId, e);
             sendError(requestId, ErrorCode.INTERNAL_ERROR, "Không thể xử lý yêu cầu");
         }
     }
@@ -465,8 +475,8 @@ public final class ClientHandler implements Runnable {
         UserDTO oldUser = currentUser;
         currentUser = null;
 
-        rooms.onDisconnected(oldUser.userId());
-        sessions.release(oldUser.userId(), this);
+        try { rooms.onDisconnected(oldUser.userId()); }
+        finally { sessions.release(oldUser.userId(), this); replies.clear(); }
     }
 
     private void sendAck(String requestId) {
@@ -482,6 +492,11 @@ public final class ClientHandler implements Runnable {
     }
 
     public void send(Packet packet) {
+        try { PacketIO.validate(packet); }
+        catch (IOException e) {
+            LOG.log(java.util.logging.Level.SEVERE, "Invalid outgoing packet: type=" + (packet == null ? null : packet.getType()), e);
+            return;
+        }
         if (packet.getRequestId() != null && packet.getType() != PacketType.PING) {
             replies.put(packet.getRequestId(), packet);
         }
@@ -502,7 +517,15 @@ public final class ClientHandler implements Runnable {
                 }
             });
         } catch (RejectedExecutionException e) {
+            LOG.warning("Closing slow connection: sender queue full");
             close();
+        }
+    }
+
+    private void checkAuthenticationLimit(String username, boolean registration) throws BUSException {
+        String address = socket.getInetAddress().getHostAddress();
+        if (!sessions.allowAuthentication(address, username, registration)) {
+            throw fail(ErrorCode.RATE_LIMIT_EXCEEDED, "Đã vượt giới hạn xác thực. Vui lòng chờ một phút rồi thử lại.");
         }
     }
 

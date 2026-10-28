@@ -31,9 +31,10 @@ import javax.swing.SwingUtilities;
 
 public final class AdminController {
     private final AdminMainFrame frame;
-    private AdminSocketClient client;
+    private volatile AdminSocketClient client;
     private ScheduledExecutorService poller;
     private LiveRoomInspectorDialog activeInspectorDialog;
+    private final RoomInspectorRequests inspectorRequests = new RoomInspectorRequests();
 
     private AuthResult currentAdmin;
 
@@ -45,6 +46,20 @@ public final class AdminController {
     private void bindEvents() {
         frame.getAuthPanel().setOnLogin(this::handleLogin);
         frame.setOnLogout(this::handleLogout);
+        frame.setOnChangePassword(req -> {
+            AdminSocketClient activeClient = client;
+            if (activeClient == null || !activeClient.isConnected()) return;
+            activeClient.send(PacketType.CHANGE_PASSWORD, req).thenAccept(packet -> SwingUtilities.invokeLater(() -> {
+                if (client != activeClient) return;
+                if (packet.getType() == PacketType.ACK) frame.setStatusMessage("Đã đổi mật khẩu quản trị.", false);
+                else if (packet.getData() instanceof Packet.ErrorPayload error) frame.setStatusMessage(error.message(), true);
+            })).exceptionally(error -> {
+                SwingUtilities.invokeLater(() -> {
+                    if (client == activeClient) frame.setStatusMessage("Không đổi được mật khẩu: " + error.getMessage(), true);
+                });
+                return null;
+            });
+        });
 
         frame.getDashboardPanel().setOnRefresh(this::loadDashboardStats);
         frame.getDashboardPanel().setOnBroadcast(this::handleBroadcast);
@@ -245,7 +260,8 @@ public final class AdminController {
                     JOptionPane.showMessageDialog(frame, "Đã giải tán / đặt lại bàn #" + req.roomId() + " thành công.", "Thành Công", JOptionPane.INFORMATION_MESSAGE);
                     loadRoomsMonitor();
                     loadDashboardStats();
-                    if (activeInspectorDialog != null && activeInspectorDialog.isVisible()) {
+                    if (activeInspectorDialog != null && activeInspectorDialog.isVisible()
+                            && activeInspectorDialog.roomId() == req.roomId()) {
                         refreshRoomInspector(req.roomId());
                     }
                 } else if (packet.getData() instanceof Packet.ErrorPayload err) {
@@ -274,18 +290,23 @@ public final class AdminController {
 
     private void refreshRoomInspector(long roomId) {
         if (client == null || !client.isConnected()) return;
+        LiveRoomInspectorDialog target = activeInspectorDialog;
+        if (target == null || target.roomId() != roomId) return;
+        RoomInspectorRequests.Ticket request = inspectorRequests.next(roomId);
 
         client.send(PacketType.ADMIN_INSPECT_ROOM_REQ, roomId).thenAccept(packet -> {
             if (packet.getData() instanceof AdminLiveMatchDetail detail) {
                 SwingUtilities.invokeLater(() -> {
-                    if (activeInspectorDialog != null && activeInspectorDialog.isVisible()) {
-                        activeInspectorDialog.updateMatchDetail(detail);
+                    if (activeInspectorDialog == target && target.isVisible()
+                            && inspectorRequests.accepts(request, detail.roomId())) {
+                        target.updateMatchDetail(detail);
                     }
                 });
             }
         }).exceptionally(ex -> {
             SwingUtilities.invokeLater(() -> {
-                if (activeInspectorDialog != null && activeInspectorDialog.isVisible()) {
+                if (activeInspectorDialog == target && target.isVisible()
+                        && inspectorRequests.accepts(request, roomId)) {
                     frame.setStatusMessage("Lỗi tải chi tiết ván: " + ex.getMessage(), true);
                 }
             });
@@ -307,6 +328,7 @@ public final class AdminController {
     }
 
     private void closeActiveInspector() {
+        inspectorRequests.cancel();
         if (activeInspectorDialog != null) {
             activeInspectorDialog.stopTimer();
             activeInspectorDialog.dispose();

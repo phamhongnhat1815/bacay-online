@@ -15,6 +15,7 @@ import java.awt.Font;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.event.HierarchyEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.image.BufferedImage;
 import java.io.Serial;
@@ -48,7 +49,10 @@ public final class GameTablePanel extends JPanel {
     private long turnAt;
     private int lastBeepSecond = -1;
 
-    private final Timer animation = new Timer(25, e -> repaint());
+    private final Timer animation = new Timer(25, e -> {
+        repaint();
+        updateAnimationState();
+    });
 
     private final List<FlyingChip> flyingChips = new CopyOnWriteArrayList<>();
 
@@ -88,6 +92,9 @@ public final class GameTablePanel extends JPanel {
         setLayout(null);
         setOpaque(false);
         setPreferredSize(new Dimension(BASE_WIDTH, BASE_HEIGHT));
+        addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0) updateAnimationState();
+        });
     }
 
     public void setWaitingOverlay(JComponent overlay) {
@@ -117,7 +124,7 @@ public final class GameTablePanel extends JPanel {
     @Override
     public void addNotify() {
         super.addNotify();
-        animation.start();
+        updateAnimationState();
     }
 
     @Override
@@ -129,6 +136,7 @@ public final class GameTablePanel extends JPanel {
     public void room(RoomSnapshot r, long uid) {
         this.room = r;
         this.myId = uid;
+        updateAnimationState();
         repaint();
     }
 
@@ -140,11 +148,13 @@ public final class GameTablePanel extends JPanel {
             lastBeepSecond = -1;
         }
         this.game = g;
+        updateAnimationState();
         repaint();
     }
 
     public void mine(PlayerStateSnapshot p) {
         this.mine = p;
+        updateAnimationState();
         repaint();
     }
 
@@ -158,6 +168,7 @@ public final class GameTablePanel extends JPanel {
         this.turnAt = 0;
         this.lastBeepSecond = -1;
         startPotFlyAnimation(r);
+        updateAnimationState();
         repaint();
     }
 
@@ -212,8 +223,24 @@ public final class GameTablePanel extends JPanel {
         this.dealtAt = System.nanoTime();
         this.lastBeepSecond = -1;
         this.flyingChips.clear();
+        updateAnimationState();
         repaint();
     }
+
+    private void updateAnimationState() {
+        long now = System.nanoTime();
+        boolean betting = game != null && result == null && "BETTING".equals(game.phase())
+                && game.currentTurnUserId() != null;
+        boolean dealing = mine != null && result == null && now - dealtAt < 700_000_000L;
+        boolean chipsMoving = flyingChips.stream().anyMatch(chip -> chip.progress(now) < 1.0);
+        if (isShowing() && (betting || dealing || chipsMoving)) {
+            if (!animation.isRunning()) animation.start();
+        } else {
+            animation.stop();
+        }
+    }
+
+    boolean animationRunning() { return animation.isRunning(); }
 
     public void clear() {
         this.room = null;

@@ -32,8 +32,8 @@ import com.game3cay.shared.network.Packet;
 import com.game3cay.shared.network.PacketIO;
 import com.game3cay.shared.network.PacketType;
 import com.game3cay.shared.security.PasswordUtil;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+
+
 import java.math.BigDecimal;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -193,6 +193,23 @@ class AdminSecurityTest {
     }
 
     @Test
+    void maximumBroadcastDoesNotDisconnectAdminOrPlayers() throws Exception {
+        try (var playerSocket = new Socket("127.0.0.1", serverSocket.getLocalPort());
+             var player = new TestWire(playerSocket);
+             var adminSocket = new Socket("127.0.0.1", serverSocket.getLocalPort());
+             var admin = new TestWire(adminSocket)) {
+            assertEquals(PacketType.AUTH_RESULT, player.request(PacketType.LOGIN, new AuthRequest("player_one", "password123")).getType());
+            assertEquals(PacketType.AUTH_RESULT, admin.request(PacketType.LOGIN, new AuthRequest("admin_boss", "adminPass123")).getType());
+            assertEquals(PacketType.ACK, admin.request(PacketType.ADMIN_BROADCAST_REQ,
+                    new com.game3cay.shared.model.AdminBroadcastRequest("x".repeat(500), "INFO")).getType());
+            assertEquals(PacketType.PROFILE_RESULT, player.request(PacketType.GET_PROFILE, null).getType());
+            assertEquals(PacketType.PROFILE_RESULT, admin.request(PacketType.GET_PROFILE, null).getType());
+            assertTrue(player.pushes.stream().anyMatch(p -> p.getType() == PacketType.CHAT_SYSTEM));
+            assertTrue(admin.pushes.stream().anyMatch(p -> p.getType() == PacketType.CHAT_SYSTEM));
+        }
+    }
+
+    @Test
     void adminUserCanAccessStatsAndManageUsers() throws Exception {
         try (Socket socket = new Socket("127.0.0.1", serverSocket.getLocalPort());
              TestWire wire = new TestWire(socket)) {
@@ -260,12 +277,13 @@ class AdminSecurityTest {
     }
 
     private static final class TestWire implements AutoCloseable {
-        private final ObjectOutputStream out;
-        private final ObjectInputStream in;
+        private final List<Packet> pushes = new ArrayList<>();
+        private final PacketIO.Output out;
+        private final PacketIO.Input in;
 
         TestWire(Socket socket) throws Exception {
             socket.setSoTimeout(3000);
-            out = new ObjectOutputStream(socket.getOutputStream());
+            out = PacketIO.openOutput(socket);
             out.flush();
             in = PacketIO.openInput(socket);
         }
@@ -280,7 +298,7 @@ class AdminSecurityTest {
                     PacketIO.write(out, new Packet(PacketType.PONG, incoming.getRequestId(), null));
                 } else if (req.getRequestId().equals(incoming.getRequestId())) {
                     return incoming;
-                }
+                } else { pushes.add(incoming); }
             }
         }
 

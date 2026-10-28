@@ -89,6 +89,7 @@ public final class RoomsPanel extends JPanel {
         header.setReorderingAllowed(false);
 
         roomsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            { putClientProperty("html.disable", Boolean.TRUE); }
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int col) {
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, col);

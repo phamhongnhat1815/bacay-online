@@ -270,15 +270,14 @@ class JdbcUserBUSTest {
   }
 
   private static final class Wire implements AutoCloseable {
-    private final java.io.ObjectOutputStream out;
-    private final java.io.ObjectInputStream in;
+    private final com.game3cay.shared.network.PacketIO.Output out;
+    private final com.game3cay.shared.network.PacketIO.Input in;
     private final java.util.List<com.game3cay.shared.network.Packet> events =
         new java.util.ArrayList<>();
 
     Wire(java.net.Socket socket) throws Exception {
       socket.setSoTimeout(3000);
-      out = new java.io.ObjectOutputStream(socket.getOutputStream());
-      out.flush();
+      out = com.game3cay.shared.network.PacketIO.openOutput(socket);
       in = com.game3cay.shared.network.PacketIO.openInput(socket);
     }
 

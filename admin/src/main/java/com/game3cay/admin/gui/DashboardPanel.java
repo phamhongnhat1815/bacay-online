@@ -137,14 +137,14 @@ public final class DashboardPanel extends JPanel {
 
         JPanel infoHeader = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         infoHeader.add(AdminTheme.label("THÔNG SỐ MÁY CHỦ & KIẾN TRÚC HỆ THỐNG", 15, AdminTheme.GOLD, true));
-        infoHeader.add(AdminTheme.label("Cấu hình hạ tầng mạng socket nhị phân Packet v2 và an toàn cơ sở dữ liệu", 12, AdminTheme.MUTED));
+        infoHeader.add(AdminTheme.label("Giao thức kết nối và lưu trữ dữ liệu", 12, AdminTheme.MUTED));
         infoCard.add(infoHeader, BorderLayout.NORTH);
 
         JPanel infoGrid = AdminTheme.transparent(new GridLayout(2, 2, 14, 10));
-        infoGrid.add(createTile("CỔNG DỊCH VỤ TCP", "0.0.0.0 : 8888 (Tối đa 256 kết nối socket đồng thời)"));
-        infoGrid.add(createTile("CHUẨN GIAO THỨC", "Custom Binary Packet v2 (Magic 0x3C33, Big-Endian, 8B Header)"));
-        infoGrid.add(createTile("CƠ SỞ DỮ LIỆU", "MySQL 8.0 Community Server (InnoDB, Zero Deadlock Locking)"));
-        infoGrid.add(createTile("BẢO MẬT & PHÂN QUYỀN", "Java ObjectInputFilter Whitelist + PBKDF2 (600.000 vòng lặp)"));
+        infoGrid.add(createTile("KẾT NỐI", "TCP/TLS theo cấu hình của máy chủ"));
+        infoGrid.add(createTile("CHUẨN GIAO THỨC", "Packet v" + com.game3cay.shared.network.Packet.VERSION + " · Giới hạn kích thước từng gói tin"));
+        infoGrid.add(createTile("CƠ SỞ DỮ LIỆU", "MySQL · Transaction và sổ cái kiểm toán"));
+        infoGrid.add(createTile("BẢO MẬT & PHÂN QUYỀN", "ObjectInputFilter · PBKDF2 · Phân quyền quản trị"));
         infoCard.add(infoGrid, BorderLayout.CENTER);
 
         contentArea.add(infoCard, BorderLayout.CENTER);

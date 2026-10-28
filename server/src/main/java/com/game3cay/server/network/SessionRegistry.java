@@ -7,10 +7,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class SessionRegistry {
     private final ConcurrentHashMap<Long, ClientHandler> onlineSessions = new ConcurrentHashMap<>();
+    private final AuthenticationLimiter authenticationLimiter = new AuthenticationLimiter();
 
     public synchronized boolean bind(long userId, ClientHandler handler) {
         ClientHandler old = onlineSessions.get(userId);
-        if (old != null && old != handler && !old.isClosed()) {
+        if (old != null && old != handler) {
             return false;
         }
         onlineSessions.put(userId, handler);
@@ -19,6 +20,10 @@ public final class SessionRegistry {
 
     public void release(long userId, ClientHandler handler) {
         onlineSessions.remove(userId, handler);
+    }
+
+    public boolean allowAuthentication(String ip, String username, boolean registration) {
+        return authenticationLimiter.allow(ip, username, registration);
     }
 
     public void broadcast(List<Long> recipientUserIds, Packet packet) {

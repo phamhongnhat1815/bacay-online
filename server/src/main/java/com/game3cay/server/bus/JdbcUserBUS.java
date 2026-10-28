@@ -99,6 +99,9 @@ public final class JdbcUserBUS implements UserBUS {
                 throw credentials();
             }
 
+            if ("ADMIN".equalsIgnoreCase(account.profile().role()) && "admin@123".equals(rawPassword)) {
+                throw new BUSException(ErrorCode.FORBIDDEN, "Mật khẩu quản trị mặc định đã bị vô hiệu; hãy khởi động lại server để bootstrap an toàn");
+            }
             if ("BLOCKED".equals(account.profile().status())) {
                 throw new BUSException(ErrorCode.USER_BLOCKED, "Tài khoản của bạn đã bị khóa");
             }
@@ -177,6 +180,10 @@ public final class JdbcUserBUS implements UserBUS {
                 throw new BUSException(ErrorCode.FORBIDDEN, "Mật khẩu hiện tại không đúng");
             }
 
+            if ("ADMIN".equalsIgnoreCase(account.profile().role()) && "admin@123".equals(newRawPassword)) {
+                throw invalid("Không được sử dụng mật khẩu quản trị mặc định đã công khai");
+            }
+
             String newHash = PasswordUtil.hash(newRawPassword);
             boolean updated = users.changePassword(userId, account.passwordHash(), newHash);
             if (!updated) {
@@ -190,6 +197,11 @@ public final class JdbcUserBUS implements UserBUS {
     @Override
     public PageResult<AdminUserItem> findUsersForAdmin(String query, String statusFilter, int page, int pageSize)
             throws BUSException {
+        validatePage(page, pageSize);
+        if (query != null && query.length() > 100) throw invalid("Tìm kiếm tối đa 100 ký tự");
+        if (statusFilter != null && !java.util.Set.of("ALL", "ACTIVE", "BLOCKED").contains(statusFilter.toUpperCase(Locale.ROOT))) {
+            throw invalid("Bộ lọc trạng thái không hợp lệ");
+        }
         try {
             return users.findUsersForAdmin(query, statusFilter, page, pageSize);
         } catch (SQLException e) {
@@ -213,11 +225,15 @@ public final class JdbcUserBUS implements UserBUS {
     @Override
     public void adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason)
             throws BUSException {
-        if (delta == null || delta.signum() == 0 || delta.scale() > 2) {
+        if (adminId <= 0 || targetUserId <= 0 || delta == null || delta.signum() == 0
+                || delta.precision() > 15 || delta.scale() < 0 || delta.scale() > 2) {
             throw new BUSException(ErrorCode.INVALID_BET_AMOUNT, "Số điểm điều chỉnh không hợp lệ");
         }
+        if (reason == null || reason.isBlank() || reason.length() > 255) {
+            throw invalid("Lý do điều chỉnh cần từ 1 đến 255 ký tự");
+        }
         try {
-            users.adjustUserBalance(adminId, targetUserId, delta, reason);
+            users.adjustUserBalance(adminId, targetUserId, delta, reason.trim());
         } catch (SQLException e) {
             throw databaseError(e);
         }
@@ -234,13 +250,17 @@ public final class JdbcUserBUS implements UserBUS {
 
     @Override
     public PageResult<AdminLedgerItem> getLedgerForAdmin(int page, int pageSize) throws BUSException {
-        if (page < 0 || pageSize < 1 || pageSize > 100) {
-            throw new BUSException(ErrorCode.INVALID_PAGE, "Tham số phân trang không hợp lệ");
-        }
+        validatePage(page, pageSize);
         try {
             return users.getLedgerEntries(page, pageSize);
         } catch (SQLException e) {
             throw databaseError(e);
+        }
+    }
+
+    private static void validatePage(int page, int pageSize) throws BUSException {
+        if (page < 0 || page > 1_000_000 || pageSize < 1 || pageSize > 100) {
+            throw new BUSException(ErrorCode.INVALID_PAGE, "Tham số phân trang không hợp lệ");
         }
     }
 

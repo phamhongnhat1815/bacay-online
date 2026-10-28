@@ -61,6 +61,8 @@ public final class LiveRoomInspectorDialog extends JDialog {
     private final JTextArea chatLogArea = new JTextArea();
     private Timer autoTimer;
 
+    public long roomId() { return roomId; }
+
     public LiveRoomInspectorDialog(Frame parent, long roomId, Consumer<Long> onRefreshRequest, Consumer<Long> onResetRequest) {
         super(parent, "[GOD-VIEW] Giám Sát Ván Bài Trực Tiếp - Bàn #" + roomId, false);
         this.roomId = roomId;
@@ -192,6 +194,7 @@ public final class LiveRoomInspectorDialog extends JDialog {
     }
 
     public void updateMatchDetail(AdminLiveMatchDetail detail) {
+        if (detail == null || detail.roomId() != roomId) return;
         if (detail == null) return;
 
         titleLabel.setText("BÀN #" + detail.roomId() + ": " + detail.roomName());

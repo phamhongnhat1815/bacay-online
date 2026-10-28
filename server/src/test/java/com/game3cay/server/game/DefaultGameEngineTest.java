@@ -137,12 +137,46 @@ class DefaultGameEngineTest {
   }
 
   @Test
-  void leavingTwoPlayerRoundCancelsAndRefunds() throws Exception {
+  void leavingTwoPlayerRoundFoldsAndDoesNotRefund() throws Exception {
     var e = engine(2, 100);
     var result = e.handlePlayerLeft("round", 2).roundResult();
+    assertEquals("FINISHED", result.roundStatus());
+    assertEquals(new BigDecimal("99.00"), e.getPlayerSnapshot("round", 2).myBalance());
+    assertEquals(new BigDecimal("101.00"), e.getPlayerSnapshot("round", 1).myBalance());
+    assertEquals("FOLD", result.playerResults().get(1).result());
+  }
+
+  @Test
+  void explicitCancellationRefundsEveryParticipant() throws Exception {
+    var e = engine(3, 100);
+    e.handleAction("round", 2, BetAction.RAISE, new BigDecimal("30.00"));
+    var result = e.cancelRound("round").roundResult();
     assertEquals("CANCELLED", result.roundStatus());
     assertTrue(result.playerResults().stream().allMatch(p -> p.profit().signum() == 0));
-    assertEquals(new BigDecimal("100.00"), e.getPlayerSnapshot("round", 1).myBalance());
+    for (long id = 1; id <= 3; id++) {
+      assertEquals(new BigDecimal("100.00"), e.getPlayerSnapshot("round", id).myBalance());
+    }
+  }
+
+  @Test
+  void offTurnDepartureDoesNotSkipCurrentPlayer() throws Exception {
+    var e = engine(4, 100);
+    assertEquals(2L, e.getPublicSnapshot("round").currentTurnUserId());
+    e.handlePlayerLeft("round", 4);
+    assertEquals(2L, e.getPublicSnapshot("round").currentTurnUserId());
+  }
+
+  @Test
+  void equalStraightsCompareOnlyTheSuitOfTheirHighCard() {
+    var a = eval.evaluate(List.of(c(Rank.FOUR, Suit.RO), c(Rank.FIVE, Suit.BICH), c(Rank.SIX, Suit.CHUON)));
+    var b = eval.evaluate(List.of(c(Rank.FOUR, Suit.CHUON), c(Rank.FIVE, Suit.CHUON), c(Rank.SIX, Suit.CO)));
+    assertTrue(eval.compare(a, b) < 0);
+    var lowA = eval.evaluate(List.of(c(Rank.ACE, Suit.RO), c(Rank.TWO, Suit.BICH), c(Rank.THREE, Suit.CHUON)));
+    var lowB = eval.evaluate(List.of(c(Rank.ACE, Suit.CHUON), c(Rank.TWO, Suit.CHUON), c(Rank.THREE, Suit.CO)));
+    assertTrue(eval.compare(lowA, lowB) < 0);
+    var highA = eval.evaluate(List.of(c(Rank.QUEEN, Suit.RO), c(Rank.KING, Suit.CO), c(Rank.ACE, Suit.BICH)));
+    var highB = eval.evaluate(List.of(c(Rank.QUEEN, Suit.CO), c(Rank.KING, Suit.BICH), c(Rank.ACE, Suit.RO)));
+    assertTrue(eval.compare(highA, highB) < 0);
   }
 
   @Test

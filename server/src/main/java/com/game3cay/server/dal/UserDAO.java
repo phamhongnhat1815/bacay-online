@@ -301,48 +301,40 @@ public final class UserDAO {
     }
 
     public PageResult<AdminLedgerItem> getLedgerEntries(int page, int pageSize) throws SQLException {
-        int totalItems = 0;
-        try (Connection conn = connections.open();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM play_ledger")) {
-            if (rs.next()) {
-                totalItems = rs.getInt(1);
+        String combined = "SELECT l.round_id, l.user_id, u.username, l.delta, l.balance_before, l.balance_after, "
+                + "r.ended_at AS ts, 'GAME' AS transaction_type, CAST(NULL AS CHAR) AS admin_username, "
+                + "CAST(NULL AS CHAR) AS reason FROM play_ledger l "
+                + "JOIN users u ON l.user_id=u.id JOIN play_rounds r ON l.round_id=r.round_id "
+                + "UNION ALL SELECT a.adjustment_id, a.target_user_id, u.username, a.delta, a.balance_before, "
+                + "a.balance_after, CAST(UNIX_TIMESTAMP(a.created_at) AS DECIMAL(20,0))*1000 AS ts, 'ADMIN', au.username, a.reason "
+                + "FROM admin_adjustments a JOIN users u ON a.target_user_id=u.id "
+                + "LEFT JOIN users au ON a.admin_user_id=au.id";
+        try (Connection conn = connections.open()) {
+            long totalItems;
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rows = stmt.executeQuery("SELECT COUNT(*) FROM (" + combined + ") entries")) {
+                rows.next();
+                totalItems = rows.getLong(1);
             }
-        }
-
-        int totalPages = (totalItems == 0) ? 0 : (totalItems + pageSize - 1) / pageSize;
-        if (totalItems == 0) {
-            return new PageResult<>(List.of(), page, pageSize, 0, 0);
-        }
-
-        String sql = "SELECT l.round_id, l.user_id, u.username, l.delta, l.balance_before, l.balance_after, "
-                + "COALESCE(r.ended_at, UNIX_TIMESTAMP() * 1000) AS ts "
-                + "FROM play_ledger l "
-                + "JOIN users u ON l.user_id = u.id "
-                + "LEFT JOIN play_rounds r ON l.round_id = r.round_id "
-                + "ORDER BY ts DESC LIMIT ? OFFSET ?";
-
-        List<AdminLedgerItem> items = new ArrayList<>();
-        try (Connection conn = connections.open();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setInt(1, pageSize);
-            stmt.setInt(2, page * pageSize);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    items.add(new AdminLedgerItem(
-                            rs.getString("round_id"),
-                            rs.getLong("user_id"),
-                            rs.getString("username"),
-                            rs.getBigDecimal("delta"),
-                            rs.getBigDecimal("balance_before"),
-                            rs.getBigDecimal("balance_after"),
-                            rs.getLong("ts")
-                    ));
+            List<AdminLedgerItem> items = new ArrayList<>();
+            String sql = "SELECT * FROM (" + combined + ") entries "
+                    + "ORDER BY ts DESC, transaction_type, round_id, user_id LIMIT ? OFFSET ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, pageSize);
+                stmt.setLong(2, (long) page * pageSize);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        items.add(new AdminLedgerItem(rs.getString("round_id"), rs.getLong("user_id"),
+                                rs.getString("username"), rs.getBigDecimal("delta"),
+                                rs.getBigDecimal("balance_before"), rs.getBigDecimal("balance_after"),
+                                rs.getLong("ts"), rs.getString("transaction_type"),
+                                rs.getString("admin_username"), rs.getString("reason")));
+                    }
                 }
             }
+            return new PageResult<>(List.copyOf(items), page, pageSize, totalItems,
+                    PageResult.calcTotalPages(totalItems, pageSize));
         }
-
-        return new PageResult<>(items, page, pageSize, totalItems, totalPages);
     }
 
     private static Account readAccount(ResultSet rs) throws SQLException {

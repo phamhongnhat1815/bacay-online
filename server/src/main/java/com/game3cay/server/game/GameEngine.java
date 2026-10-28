@@ -20,6 +20,8 @@ public interface GameEngine {
 
   ActionResult handlePlayerLeft(String roundId, long userId) throws GameEngineException;
 
+  ActionResult cancelRound(String roundId) throws GameEngineException;
+
   GameStateSnapshot getPublicSnapshot(String roundId) throws GameEngineException;
 
   RoundResult getRoundResult(String roundId) throws GameEngineException;

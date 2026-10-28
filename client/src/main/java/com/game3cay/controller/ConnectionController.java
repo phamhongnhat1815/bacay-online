@@ -68,8 +68,7 @@ public final class ConnectionController implements PacketListener {
     private int savedPort;
     private long savedRoomId;
     private boolean isExplicitLogout;
-    private boolean isReconnecting;
-    private int reconnectAttempts;
+    private final ReconnectState reconnectState = new ReconnectState(MAX_RECONNECT_ATTEMPTS);
 
     public ConnectionController(MainFrame view) {
         this.view = Objects.requireNonNull(view, "view không được null");
@@ -77,7 +76,8 @@ public final class ConnectionController implements PacketListener {
         this.requestTimeoutTimer = new Timer(
                 12000,
                 e -> {
-                    if (isReconnecting) {
+                    if (reconnectState.active()) {
+                        scheduleReconnect("Máy chủ chưa phản hồi khi khôi phục phiên.");
                         return;
                     }
                     if (currentUser != null && savedPassword != null && !isExplicitLogout) {
@@ -293,7 +293,8 @@ public final class ConnectionController implements PacketListener {
         }
         if (client == null || !client.isConnected()) {
             if (currentUser != null && savedPassword != null && !isExplicitLogout) {
-                startAutoReconnect();
+                if (reconnectState.active()) scheduleReconnect("Kết nối chưa sẵn sàng.");
+                else startAutoReconnect();
             } else {
                 handleDisconnect("Kết nối máy chủ đã ngắt. Vui lòng đăng nhập lại.");
             }
@@ -314,7 +315,8 @@ public final class ConnectionController implements PacketListener {
 
         if (!client.send(packet)) {
             if (currentUser != null && savedPassword != null && !isExplicitLogout) {
-                startAutoReconnect();
+                if (reconnectState.active()) scheduleReconnect("Không gửi được yêu cầu khôi phục phiên.");
+                else startAutoReconnect();
             } else {
                 handleDisconnect("Không gửi được dữ liệu. Vui lòng đăng nhập lại.");
             }
@@ -326,7 +328,7 @@ public final class ConnectionController implements PacketListener {
     }
 
     private void performMaintenance() {
-        if (currentUser == null || pendingRequest != null || currentRoom != null || isReconnecting) {
+        if (currentUser == null || pendingRequest != null || currentRoom != null || reconnectState.active()) {
             return;
         }
 
@@ -372,7 +374,7 @@ public final class ConnectionController implements PacketListener {
     @Override
     public void onConnected(SocketClient source) {
         runOnSwingThread(source, () -> {
-            if (isReconnecting && savedUsername != null && savedPassword != null) {
+            if (reconnectState.active() && savedUsername != null && savedPassword != null) {
                 queuedAuthPacket = Packet.request(
                         PacketType.LOGIN,
                         new AuthRequest(savedUsername, new String(savedPassword))
@@ -401,9 +403,8 @@ public final class ConnectionController implements PacketListener {
                 return;
             }
 
-            if (isReconnecting) {
-                reconnectTimer.setInitialDelay(1500);
-                reconnectTimer.restart();
+            if (reconnectState.active()) {
+                scheduleReconnect(reason);
                 return;
             }
 
@@ -420,11 +421,10 @@ public final class ConnectionController implements PacketListener {
     }
 
     private void startAutoReconnect() {
-        if (isReconnecting || isClosing || isExplicitLogout) {
+        if (reconnectState.active() || isClosing || isExplicitLogout) {
             return;
         }
-        isReconnecting = true;
-        reconnectAttempts = 0;
+        reconnectState.begin();
         pendingRequest = null;
         queuedAuthPacket = null;
         requestTimeoutTimer.stop();
@@ -434,20 +434,18 @@ public final class ConnectionController implements PacketListener {
     }
 
     private void attemptReconnect() {
-        if (!isReconnecting || isClosing || isExplicitLogout) {
+        if (!reconnectState.active() || isClosing || isExplicitLogout) {
             reconnectTimer.stop();
             return;
         }
 
-        reconnectAttempts++;
-        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        if (!reconnectState.nextAttempt()) {
             reconnectTimer.stop();
-            isReconnecting = false;
             handleDisconnect("Mất kết nối với máy chủ sau " + MAX_RECONNECT_ATTEMPTS + " lần thử. Vui lòng đăng nhập lại.");
             return;
         }
 
-        view.showMessage("⚠️ Đang khôi phục kết nối... (Lần " + reconnectAttempts + "/" + MAX_RECONNECT_ATTEMPTS + ")");
+        view.showMessage("⚠️ Đang khôi phục kết nối... (Lần " + reconnectState.attempts() + "/" + MAX_RECONNECT_ATTEMPTS + ")");
 
         if (client != null) {
             SocketClient oldClient = client;
@@ -456,7 +454,31 @@ public final class ConnectionController implements PacketListener {
         }
 
         client = new SocketClient(this);
+        connectedHost = savedHost;
+        connectedPort = savedPort;
+        requestTimeoutTimer.restart();
         client.connect(savedHost, savedPort);
+    }
+
+    private void scheduleReconnect(String reason) {
+        if (!reconnectState.active() || isClosing || isExplicitLogout) return;
+        pendingRequest = null;
+        queuedAuthPacket = null;
+        requestTimeoutTimer.stop();
+        SocketClient oldClient = client;
+        client = null;
+        if (oldClient != null) oldClient.disconnect();
+        updateUiOperationState();
+        view.showMessage(reason + " Đang chờ thử kết nối lại…");
+        reconnectTimer.restart();
+    }
+
+    private void handleReconnectFailure(ErrorCode code, String message) {
+        if (ReconnectState.retryable(code)) {
+            scheduleReconnect(message);
+        } else {
+            handleDisconnect(message + " Vui lòng đăng nhập lại.");
+        }
     }
 
     private void handleIncomingPacket(Packet packet) {
@@ -479,7 +501,11 @@ public final class ConnectionController implements PacketListener {
             }
 
             if (type == PacketType.ROOM_UPDATED) {
-                applyRoomSnapshot((RoomSnapshot) data, false);
+                RoomSnapshot snapshot = (RoomSnapshot) data;
+                boolean entering = pendingRequest != null
+                        && pendingRequest.type() == PacketType.JOIN_ROOM
+                        && pendingRequest.roomId() == snapshot.roomId();
+                applyRoomSnapshot(snapshot, entering);
                 return;
             }
 
@@ -527,7 +553,14 @@ public final class ConnectionController implements PacketListener {
                         view.showMessage("Ván mới đã bắt đầu. Chúc bạn may mắn!");
                     }
                 }
-                case GAME_UPDATED -> gamePanel.game((GameStateSnapshot) data);
+                case GAME_UPDATED -> {
+                    GameStateSnapshot snapshot = (GameStateSnapshot) data;
+                    // A full resync can arrive after the START_GAME event was missed.
+                    if (!gamePanel.accepts(snapshot.roundId()) && "PLAYING".equals(currentRoom.status())) {
+                        gamePanel.start(snapshot.roundId(), currentUser.userId());
+                    }
+                    gamePanel.game(snapshot);
+                }
                 case BET_UPDATED -> gamePanel.bets((BetStateSnapshot) data);
                 case PLAYER_STATE -> {
                     PlayerStateSnapshot playerSnapshot = (PlayerStateSnapshot) data;
@@ -559,6 +592,12 @@ public final class ConnectionController implements PacketListener {
             if (pendingNewPassword != null) {
                 Arrays.fill(pendingNewPassword, '\0');
                 pendingNewPassword = null;
+            }
+
+            if (reconnectState.active() && activeRequest.type() == PacketType.LOGIN) {
+                handleReconnectFailure(errorPayload.code(), errorPayload.message() == null
+                        ? "Không thể khôi phục phiên đăng nhập." : errorPayload.message());
+                return;
             }
 
             if (errorPayload.code() == ErrorCode.UNAUTHENTICATED) {
@@ -596,6 +635,11 @@ public final class ConnectionController implements PacketListener {
 
             if (!authResult.success()) {
                 afterRegisterLogin = null;
+                if (reconnectState.active()) {
+                    handleReconnectFailure(authResult.errorCode(), authResult.message() == null
+                            ? "Không thể khôi phục phiên đăng nhập." : authResult.message());
+                    return;
+                }
                 view.showMessage(authResult.message());
                 return;
             }
@@ -626,10 +670,12 @@ public final class ConnectionController implements PacketListener {
             view.showSignedIn(displayName, authResult.userId());
             view.setBalance(authResult.balance());
 
-            if (isReconnecting) {
-                isReconnecting = false;
-                reconnectAttempts = 0;
+            if (reconnectState.active()) {
+                reconnectState.finish();
                 reconnectTimer.stop();
+                // Reset the old room/version before applying the server's authoritative resync.
+                currentRoom = null;
+                view.room().game().clear();
                 if (savedRoomId > 0) {
                     view.showMessage("Đang khôi phục lại bàn chơi #" + savedRoomId + "…");
                     sendRequest(PacketType.JOIN_ROOM, new JoinRoomRequest(savedRoomId));
@@ -810,7 +856,7 @@ public final class ConnectionController implements PacketListener {
     }
 
     private void updateUiOperationState() {
-        view.setOperationEnabled(queuedAuthPacket == null && pendingRequest == null && !isReconnecting);
+        view.setOperationEnabled(queuedAuthPacket == null && pendingRequest == null && !reconnectState.active());
     }
 
     private void resetSignedOutState() {
@@ -826,7 +872,7 @@ public final class ConnectionController implements PacketListener {
             Arrays.fill(pendingNewPassword, '\0');
             pendingNewPassword = null;
         }
-        isReconnecting = false;
+        reconnectState.finish();
         reconnectTimer.stop();
         pendingRoomChatEvents.clear();
         afterRegisterLogin = null;
@@ -848,7 +894,7 @@ public final class ConnectionController implements PacketListener {
         pendingRequest = null;
         requestTimeoutTimer.stop();
         reconnectTimer.stop();
-        isReconnecting = false;
+        reconnectState.finish();
 
         if (oldClient != null) {
             oldClient.disconnect();

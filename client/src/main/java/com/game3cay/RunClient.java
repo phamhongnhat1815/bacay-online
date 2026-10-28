@@ -3,6 +3,7 @@ package com.game3cay;
 import com.game3cay.controller.ConnectionController;
 import com.game3cay.gui.MainFrame;
 import com.game3cay.gui.Theme;
+import com.game3cay.gui.Assets;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -34,6 +35,8 @@ public final class RunClient {
             }
         }
 
+        // Decode the packaged images on the startup thread, never in the EDT's first paint.
+        Assets.preload();
         SwingUtilities.invokeLater(() -> {
             Theme.install();
             MainFrame view = new MainFrame();

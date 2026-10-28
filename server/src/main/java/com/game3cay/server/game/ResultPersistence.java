@@ -32,6 +32,7 @@ public final class ResultPersistence implements AutoCloseable {
     private final GameBUS bus;
     private final Path directory;
     private final Map<String, CompletedRound> pending = new LinkedHashMap<>();
+    private final Object journalLock = new Object();
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "result-writer");
@@ -66,7 +67,7 @@ public final class ResultPersistence implements AutoCloseable {
                 .anyMatch(r -> r.result().playerResults().stream().anyMatch(p -> p.userId() == userId));
     }
 
-    public synchronized void enqueue(CompletedRound round) throws IOException {
+    public void enqueue(CompletedRound round) throws IOException {
         String roundId = round.result().roundId();
         if (!UUID_PATTERN.matcher(roundId).matches()) {
             throw new IOException("roundId không đúng định dạng UUID: " + roundId);
@@ -75,19 +76,27 @@ public final class ResultPersistence implements AutoCloseable {
         Path targetFile = directory.resolve(roundId + ".round");
         Path tempFile = directory.resolve(roundId + ".tmp");
 
-        if (!pending.containsKey(roundId)) {
-            try (var out = new ObjectOutputStream(Files.newOutputStream(tempFile))) {
-                out.writeObject(round);
+        synchronized (journalLock) {
+            boolean exists;
+            synchronized (this) {
+                exists = pending.containsKey(roundId);
             }
-            try (var channel = FileChannel.open(tempFile, StandardOpenOption.WRITE)) {
-                channel.force(true);
+            if (!exists) {
+                try (var out = new ObjectOutputStream(Files.newOutputStream(tempFile))) {
+                    out.writeObject(round);
+                }
+                try (var channel = FileChannel.open(tempFile, StandardOpenOption.WRITE)) {
+                    channel.force(true);
+                }
+                try {
+                    Files.move(tempFile, targetFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                }
+                synchronized (this) {
+                    pending.put(roundId, round);
+                }
             }
-            try {
-                Files.move(tempFile, targetFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            pending.put(roundId, round);
         }
 
         worker.execute(this::retryPendingResults);

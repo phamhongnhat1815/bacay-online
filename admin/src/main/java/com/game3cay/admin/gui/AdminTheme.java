@@ -42,7 +42,9 @@ public final class AdminTheme {
     }
 
     public static JLabel label(String text, int size, Color color, boolean bold) {
-        JLabel label = new JLabel(text);
+        JLabel label = new JLabel();
+        label.putClientProperty("html.disable", Boolean.TRUE);
+        label.setText(text);
         label.setFont(font(size, bold));
         label.setForeground(color);
         return label;

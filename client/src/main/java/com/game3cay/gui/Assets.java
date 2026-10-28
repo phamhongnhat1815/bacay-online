@@ -1,6 +1,8 @@
 package com.game3cay.gui;
 
 import com.game3cay.shared.model.Card;
+import com.game3cay.shared.model.Rank;
+import com.game3cay.shared.model.Suit;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
@@ -19,6 +21,26 @@ public final class Assets {
     private static final Map<String, BufferedImage> IMAGE_CACHE = new ConcurrentHashMap<>();
 
     private Assets() {}
+
+    /** Called on the startup worker, before the first Swing paint. */
+    public static void preload() {
+        get("backgrounds/auth.png", 1700);
+        get("backgrounds/casino.png", 1700);
+        for (String variant : new String[] {"blue", "gold", "green", "orange", "red", "disabled"}) {
+            get("buttons/" + variant + ".png", 420);
+        }
+        get("dealer.png", 220);
+        get("table.png", 1100);
+        get("table.png", 240);
+        get("chips.png", 60);
+        get("chips.png", 110);
+        get("icons/crown.png", 30);
+        get("cards/back.png", 200);
+        for (int avatar = 1; avatar <= 6; avatar++) get("avatars/avatar_player_" + avatar + ".png", 100);
+        for (Suit suit : Suit.values()) {
+            for (Rank rank : Rank.values()) card(new Card(rank, suit));
+        }
+    }
 
     public static BufferedImage get(String relativePath, int targetWidth) {
         return IMAGE_CACHE.computeIfAbsent(relativePath + ":" + targetWidth, key -> loadImage(relativePath, targetWidth));

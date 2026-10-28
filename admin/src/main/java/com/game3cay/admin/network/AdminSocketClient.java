@@ -1,19 +1,15 @@
 package com.game3cay.admin.network;
 
-import com.game3cay.shared.network.ErrorCode;
 import com.game3cay.shared.network.Packet;
 import com.game3cay.shared.network.PacketIO;
 import com.game3cay.shared.network.PacketType;
+import com.game3cay.shared.network.TlsTransport;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -22,14 +18,15 @@ public final class AdminSocketClient {
     private final int port;
     private final Consumer<Packet> pushListener;
     private final Runnable onDisconnect;
-
-    private Socket socket;
-    private ObjectInputStream in;
-    private ObjectOutputStream out;
-    private Thread readerThread;
-
-    private final AtomicBoolean connected = new AtomicBoolean(false);
+    private volatile Socket socket;
+    private PacketIO.Input in;
+    private PacketIO.Output out;
+    private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean connected = new AtomicBoolean();
     private final Map<String, CompletableFuture<Packet>> pendingRequests = new ConcurrentHashMap<>();
+    private final ExecutorService sender = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(32), task -> daemon(task, "admin-socket-sender"));
 
     public AdminSocketClient(String host, int port, Consumer<Packet> pushListener, Runnable onDisconnect) {
         this.host = host;
@@ -38,104 +35,90 @@ public final class AdminSocketClient {
         this.onDisconnect = onDisconnect;
     }
 
-    public synchronized void connect() throws IOException {
-        if (connected.get()) {
-            return;
+    public void connect() throws IOException {
+        if (!started.compareAndSet(false, true)) throw new IOException("Phiên kết nối đã được sử dụng");
+        try {
+            socket = new Socket();
+            if (closed.get()) throw new IOException("Phiên kết nối đã đóng");
+            socket.connect(new InetSocketAddress(host, port), 5000);
+            socket = TlsTransport.secureClient(socket, host, 5000);
+            socket.setTcpNoDelay(true);
+            out = PacketIO.openOutput(socket);
+            in = PacketIO.openInput(socket);
+            in.setIdleTimeoutMillis(5000);
+            Packet welcome = PacketIO.read(in);
+            if (welcome.getType() != PacketType.SERVER_NOTICE) throw new IOException("Máy chủ không gửi lời chào hợp lệ");
+            in.setIdleTimeoutMillis(300_000); // Supports server heartbeat intervals up to 60 seconds.
+            if (closed.get()) throw new IOException("Phiên kết nối đã đóng");
+            connected.set(true);
+            if (pushListener != null) pushListener.accept(welcome);
+            daemon(this::readLoop, "admin-socket-reader").start();
+        } catch (ClassNotFoundException | RuntimeException e) {
+            close();
+            throw new IOException("Không thể khởi tạo kết nối quản trị", e);
+        } catch (IOException e) {
+            close();
+            throw e;
         }
-
-        socket = new Socket();
-        socket.connect(new InetSocketAddress(host, port), 5000);
-        socket.setTcpNoDelay(true);
-
-        out = new ObjectOutputStream(socket.getOutputStream());
-        out.flush();
-        in = PacketIO.openInput(socket);
-
-        connected.set(true);
-
-        readerThread = new Thread(this::readLoop, "admin-socket-reader");
-        readerThread.setDaemon(true);
-        readerThread.start();
     }
 
     public CompletableFuture<Packet> send(PacketType type, Object data) {
         String requestId = UUID.randomUUID().toString();
         Packet packet = new Packet(type, requestId, data);
         CompletableFuture<Packet> future = new CompletableFuture<>();
+        try { PacketIO.validate(packet); }
+        catch (IOException e) { return CompletableFuture.failedFuture(e); }
+        if (!isConnected()) return CompletableFuture.failedFuture(new IOException("Chưa kết nối tới máy chủ"));
         pendingRequests.put(requestId, future);
-
-        if (!connected.get() || out == null) {
-            future.completeExceptionally(new IOException("Chưa kết nối tới máy chủ"));
-            pendingRequests.remove(requestId);
-            return future;
-        }
-
-        try {
-            PacketIO.write(out, packet);
-        } catch (IOException e) {
-            pendingRequests.remove(requestId);
-            future.completeExceptionally(e);
-            close();
-        }
-
-        return future.orTimeout(10, TimeUnit.SECONDS).whenComplete((res, err) -> {
-            pendingRequests.remove(requestId);
+        // Installed before queueing/writing: a blocked writer is interrupted by closing its socket.
+        future.orTimeout(10, TimeUnit.SECONDS).whenComplete((response, error) -> {
+            pendingRequests.remove(requestId, future);
+            if (error instanceof TimeoutException) close();
         });
+        try {
+            sender.execute(() -> {
+                if (future.isDone() || !isConnected()) return;
+                try { PacketIO.write(out, packet); }
+                catch (IOException | RuntimeException e) { future.completeExceptionally(e); close(); }
+            });
+        } catch (RejectedExecutionException e) { future.completeExceptionally(new IOException("Hàng đợi gửi đã đầy", e)); }
+        return future;
     }
 
     private void readLoop() {
         try {
-            while (connected.get()) {
+            while (isConnected()) {
                 Packet packet = PacketIO.read(in);
-                if (packet == null) {
-                    break;
-                }
-
                 if (packet.getType() == PacketType.PING) {
                     try {
-                        PacketIO.write(out, new Packet(PacketType.PONG, packet.getRequestId(), null));
-                    } catch (IOException ignored) {}
+                        sender.execute(() -> {
+                            try { PacketIO.write(out, new Packet(PacketType.PONG, packet.getRequestId(), null)); }
+                            catch (IOException e) { close(); }
+                        });
+                    } catch (RejectedExecutionException e) { close(); }
                     continue;
                 }
-
-                String reqId = packet.getRequestId();
-                if (reqId != null && pendingRequests.containsKey(reqId)) {
-                    CompletableFuture<Packet> future = pendingRequests.remove(reqId);
-                    if (future != null) {
-                        future.complete(packet);
-                    }
-                } else if (pushListener != null) {
-                    pushListener.accept(packet);
-                }
+                CompletableFuture<Packet> future = packet.getRequestId() == null ? null : pendingRequests.remove(packet.getRequestId());
+                if (future != null) future.complete(packet);
+                else if (pushListener != null) pushListener.accept(packet);
             }
-        } catch (Exception e) {
-        } finally {
-            close();
-        }
+        } catch (IOException | ClassNotFoundException | RuntimeException e) {
+            if (!closed.get()) java.util.logging.Logger.getLogger(getClass().getName()).fine("Admin connection ended: " + e.getClass().getSimpleName());
+        } finally { close(); }
     }
 
-    public synchronized void close() {
-        if (!connected.compareAndSet(true, false)) {
-            return;
-        }
-
-        for (var future : pendingRequests.values()) {
-            future.completeExceptionally(new IOException("Kết nối máy chủ bị ngắt"));
-        }
+    public void close() {
+        if (!closed.compareAndSet(false, true)) return;
+        boolean wasConnected = connected.getAndSet(false);
+        try { if (socket != null) socket.close(); } catch (IOException ignored) {}
+        sender.shutdownNow();
+        pendingRequests.values().forEach(future -> future.completeExceptionally(new IOException("Kết nối máy chủ bị ngắt")));
         pendingRequests.clear();
-
-        try {
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
-            }
-        } catch (IOException ignored) {}
-
-        if (onDisconnect != null) {
-            onDisconnect.run();
-        }
+        if (wasConnected && onDisconnect != null) onDisconnect.run();
     }
 
-    public boolean isConnected() {
-        return connected.get();
+    public boolean isConnected() { return connected.get() && !closed.get(); }
+    private static Thread daemon(Runnable task, String name) {
+        Thread thread = new Thread(task, name); thread.setDaemon(true); return thread;
     }
 }

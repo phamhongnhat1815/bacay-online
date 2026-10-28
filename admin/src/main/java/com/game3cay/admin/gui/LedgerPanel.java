@@ -31,7 +31,7 @@ public final class LedgerPanel extends JPanel {
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new String[] {"Mã Ván / Giao Dịch", "ID User", "Tên Đăng Nhập", "Biến Động Điểm", "Số Dư Trước GD", "Số Dư Sau GD", "Thời Điểm Ghi Nhận"},
+            new String[] {"Mã Ván / Giao Dịch", "ID User", "Tên Đăng Nhập", "Biến Động Điểm", "Số Dư Trước GD", "Số Dư Sau GD", "Thời Điểm Ghi Nhận", "Loại GD", "Admin", "Lý Do"},
             0
     ) {
         @Serial
@@ -88,7 +88,12 @@ public final class LedgerPanel extends JPanel {
         header.setPreferredSize(new Dimension(200, 38));
         header.setReorderingAllowed(false);
 
+        ledgerTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        for (int col = 0; col < ledgerTable.getColumnCount(); col++) {
+            ledgerTable.getColumnModel().getColumn(col).setPreferredWidth(col == 0 || col == 9 ? 240 : 155);
+        }
         ledgerTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            { putClientProperty("html.disable", Boolean.TRUE); }
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int col) {
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, col);
@@ -157,7 +162,10 @@ public final class LedgerPanel extends JPanel {
                         deltaStr,
                         AdminTheme.points(item.balanceBefore()),
                         AdminTheme.points(item.balanceAfter()),
-                        TIME_FMT.format(Instant.ofEpochMilli(item.timestamp()))
+                        TIME_FMT.format(Instant.ofEpochMilli(item.timestamp())),
+                        item.transactionType(),
+                        item.adminUsername() == null ? "—" : item.adminUsername(),
+                        item.reason() == null ? "—" : item.reason()
                 });
             }
 

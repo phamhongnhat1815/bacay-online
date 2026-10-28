@@ -4,11 +4,10 @@ import com.game3cay.shared.network.Packet;
 import com.game3cay.shared.network.PacketIO;
 import com.game3cay.shared.network.PacketType;
 import com.game3cay.shared.network.RuntimeSettings;
+import com.game3cay.shared.network.TlsTransport;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
@@ -35,7 +34,7 @@ public final class SocketClient {
             "client.properties", "heartbeat.timeoutSeconds", 15, 2, 300);
 
     private final PacketListener listener;
-    private final Socket socket = new Socket();
+    private volatile Socket socket = new Socket();
 
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -54,7 +53,7 @@ public final class SocketClient {
 
     private volatile boolean connected;
     private volatile long lastReceivedNanos;
-    private ObjectOutputStream output;
+    private PacketIO.Output output;
 
     public SocketClient(PacketListener listener) {
         this.listener = Objects.requireNonNull(listener, "listener không được null");
@@ -75,13 +74,16 @@ public final class SocketClient {
     private void openConnection(String host, int port) {
         try {
             socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+            socket = TlsTransport.secureClient(socket, host, HEADER_TIMEOUT_MS);
+            socket.setTcpNoDelay(true);
 
             socket.setSoTimeout(HEADER_TIMEOUT_MS);
 
-            output = new ObjectOutputStream(socket.getOutputStream());
+            output = PacketIO.openOutput(socket);
             output.flush();
 
-            ObjectInputStream input = PacketIO.openInput(socket);
+            PacketIO.Input input = PacketIO.openInput(socket);
+            input.setIdleTimeoutMillis(SERVER_TIMEOUT_SECONDS * 1000);
 
             socket.setSoTimeout(0);
 
@@ -130,7 +132,7 @@ public final class SocketClient {
         }
     }
 
-    private void listenLoop(ObjectInputStream input) {
+    private void listenLoop(PacketIO.Input input) {
         try {
             while (isConnected()) {
                 Packet packet = PacketIO.read(input);
