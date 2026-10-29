@@ -8,7 +8,7 @@ Trong bàn chờ, bấm **Xin điểm** hoặc **Cho điểm** ở khối **Đi�
 
 Nút **Yêu cầu điểm** trong bàn hoặc **Xin / Cho điểm** ở thanh phiên mở hộp thư không chặn việc chơi. Người được xin có thể chọn **Cho điểm** hoặc **Từ chối**; người xin có thể **Hủy yêu cầu**. Mục **Đã cho / Đã nhận** có lịch sử phân trang. **Bỏ qua người này** ẩn thông báo yêu cầu từ người đã chọn trên máy hiện tại và có thể bật lại.
 
-Chỉ thực hiện chuyển khi hai người ở cùng bàn WAITING, không có ván đang khởi tạo/đang chạy/kết quả chờ lưu hoặc thao tác số dư khác. Chuyển thành công hủy sẵn sàng của hai người. Yêu cầu xin điểm có thể giữ trạng thái chờ trong khi ván diễn ra, nhưng chỉ được đồng ý khi hai người trở lại đúng bàn chờ trước lúc hết hạn.
+Chỉ thực hiện chuyển khi hai người ở cùng bàn WAITING, không có ván đang khởi tạo/đang chạy/kết quả chờ lưu hoặc thao tác số dư khác. Chuyển thành công hủy sẵn sàng của hai người; bấm **Chơi tiếp** ở thanh dưới bàn để xác nhận tham gia lại. Yêu cầu xin điểm có thể giữ trạng thái chờ trong khi ván diễn ra, nhưng chỉ được đồng ý khi hai người trở lại đúng bàn chờ trước lúc hết hạn.
 
 ## Quy tắc mặc định
 

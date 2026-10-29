@@ -182,7 +182,7 @@ public final class AuthPanel extends JPanel {
 
             g.setColor(Theme.MUTED);
             g.setFont(Theme.font(14, false));
-            g.drawString("01  Chọn bàn     02  Sẵn sàng     03  Vào ván", startX, startY + 165);
+            g.drawString("01  Chọn bàn     02  Vào ván     03  Nặn bài", startX, startY + 165);
 
             Card[] decorativeCards = {
                     new Card(Rank.ACE, Suit.BICH),
@@ -196,7 +196,7 @@ public final class AuthPanel extends JPanel {
                 cardG.rotate(Math.toRadians((i - 1) * 12), 66, 160);
                 cardG.setColor(new Color(0, 0, 0, 90));
                 cardG.fillRoundRect(5, 8, 132, 185, 12, 12);
-                cardG.drawImage(Assets.card(decorativeCards[i]), 0, 0, 132, 185, null);
+                Assets.drawCard(cardG, decorativeCards[i], 0, 0, 132, 185);
                 cardG.dispose();
             }
         }

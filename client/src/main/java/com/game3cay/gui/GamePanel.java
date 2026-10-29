@@ -16,14 +16,11 @@ import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.prefs.Preferences;
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
-import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
@@ -31,12 +28,8 @@ public final class GamePanel extends JPanel {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private static final Preferences PREFS = Preferences.userNodeForPackage(GamePanel.class);
-    private final JCheckBox autoReadyCheck = new JCheckBox("Tự động sẵn sàng", PREFS.getBoolean("auto_ready", false));
-    private JButton hostReadyButton;
-    private final Timer autoReadyTimer = new Timer(1200, e -> triggerAutoReady());
-
-    private final GameTablePanel table = new GameTablePanel();
+    private final HandRevealState reveals = new HandRevealState();
+    private final GameTablePanel table = new GameTablePanel(reveals);
     private final JLabel status = Theme.label("Chờ mọi người sẵn sàng", 14, Theme.MUTED);
     private final JTextField raiseTo = new JTextField("20", 5);
 
@@ -44,8 +37,8 @@ public final class GamePanel extends JPanel {
     private final Theme.Button raise = new Theme.Button("Tố đến", "blue");
     private final Theme.Button fold = new Theme.Button("Úp bài", "plain");
     private final Theme.Button allIn = new Theme.Button("Tất tay", "red");
-    private final Theme.Button eye = new Theme.Button("Ẩn bài", "plain");
-    private final Theme.Button squeezeBtn = new Theme.Button("Nặn bài", "plain");
+    private final Theme.Button eye = new Theme.Button("Mở hết", "plain");
+    private final Theme.Button squeezeBtn = new Theme.Button("Nặn bài (0/3)", "blue");
 
     private final Theme.Button betPlus1 = new Theme.Button("+1x", "plain");
     private final Theme.Button betPlus2 = new Theme.Button("+2x", "plain");
@@ -62,7 +55,8 @@ public final class GamePanel extends JPanel {
     private String roundId;
     private long myId;
     private boolean enabled;
-    private boolean hidden;
+    private CardSqueezeDialog squeezeDialog;
+    private final Timer squeezeClock = new Timer(250, e -> updateSqueezeContext());
 
     private final JPanel actionBar = Theme.transparent(new BorderLayout(0, 6));
     private final JPanel topBar = Theme.transparent(new BorderLayout(10, 0));
@@ -70,11 +64,10 @@ public final class GamePanel extends JPanel {
     private final JPanel actionCenterStack = Theme.transparent(new BorderLayout(0, 8));
     private final JPanel bettingBar = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
 
-    private final Theme.Glass waitingPanel = new Theme.Glass(new BorderLayout(0, 4));
-    private final JLabel waitingTitle = Theme.label("SẴN SÀNG CHO VÁN MỚI", 15, Theme.GOLD);
-    private final JLabel waitingBet = Theme.label("", 13, Theme.TEXT);
+    private final Theme.Glass waitingPanel = new Theme.Glass(new BorderLayout(12, 0));
+    private final JLabel waitingTitle = Theme.label("Chờ ván kế tiếp", 14, Theme.TEXT);
     private final JLabel waitingCount = Theme.label("", 12, Theme.MUTED);
-    private final JPanel waitingActions = Theme.transparent(new BorderLayout(0, 4));
+    private final JPanel waitingActions = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 
     private long resultDeadline;
     private final Timer resultTimer = new Timer(100, e -> updateResultClock());
@@ -86,33 +79,35 @@ public final class GamePanel extends JPanel {
 
         actionBar.setBorder(new EmptyBorder(6, 16, 8, 16));
         actionBar.setPreferredSize(new Dimension(0, 126));
-        eye.setPreferredSize(new Dimension(86, 30));
-        squeezeBtn.setPreferredSize(new Dimension(100, 30));
+        eye.setPreferredSize(new Dimension(94, 32));
+        squeezeBtn.setPreferredSize(new Dimension(128, 32));
         eye.setFont(Theme.font(12, true));
         squeezeBtn.setFont(Theme.font(12, true));
-        utilityBar.add(eye);
         utilityBar.add(squeezeBtn);
+        utilityBar.add(eye);
         topBar.add(status, BorderLayout.CENTER);
         topBar.add(utilityBar, BorderLayout.EAST);
         actionBar.add(topBar, BorderLayout.NORTH);
 
-        waitingPanel.setBorder(new EmptyBorder(10, 12, 10, 12));
+        waitingPanel.setName("round-ready-bar");
+        waitingPanel.getAccessibleContext().setAccessibleName("Điều khiển giữa các ván");
+        waitingPanel.setBorder(new EmptyBorder(10, 14, 10, 14));
+        waitingPanel.setPreferredSize(new Dimension(0, 64));
         var waitingLabels = Theme.transparent(new GridLayout(0, 1, 0, 4));
-        for (var label : new JLabel[] {waitingTitle, waitingBet, waitingCount}) {
-            label.setHorizontalAlignment(SwingConstants.CENTER);
+        for (var label : new JLabel[] {waitingTitle, waitingCount}) {
             waitingLabels.add(label);
         }
-        waitingTitle.setFont(Theme.font(15, true));
+        waitingTitle.setFont(Theme.font(14, true));
         waitingPanel.add(waitingLabels, BorderLayout.CENTER);
-        waitingPanel.add(waitingActions, BorderLayout.SOUTH);
-        table.setWaitingOverlay(waitingPanel);
+        waitingPanel.add(waitingActions, BorderLayout.EAST);
+        actionBar.add(waitingPanel, BorderLayout.SOUTH);
 
         call.setToolTipText("Theo cược");
         fold.setToolTipText("Úp bài bỏ cuộc");
         allIn.setToolTipText("Tất tay toàn bộ số dư");
         raise.setToolTipText("Xác nhận tố đến mức đã nhập");
         eye.setToolTipText("Ẩn hoặc hiện ba lá bài của bạn");
-        squeezeBtn.setToolTipText("Mở chế độ Nặn bài để hé mở điểm số");
+        squeezeBtn.setToolTipText("Kéo để hé từng lá bài; đóng cửa sổ vẫn giữ các lá chưa mở ở trạng thái úp");
         squeezeBtn.addActionListener(e -> openCardSqueeze());
 
         fold.setPreferredSize(new Dimension(90, 40));
@@ -155,33 +150,18 @@ public final class GamePanel extends JPanel {
         add(actionBar, BorderLayout.SOUTH);
 
         eye.addActionListener(e -> {
-            hidden = !hidden;
-            eye.setText(hidden ? "Xem bài" : "Ẩn bài");
-            table.hideCards(hidden);
+            closeSqueeze();
+            reveals.openOrToggleCover();
+            render();
         });
 
         clear();
     }
 
     public void setWaitingControls(JButton ready, JButton start) {
-        this.hostReadyButton = ready;
         waitingActions.removeAll();
-        var buttons = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
-        buttons.add(ready);
-        buttons.add(start);
-        waitingActions.add(buttons, BorderLayout.CENTER);
-
-        autoReadyCheck.setFont(Theme.font(12, false));
-        autoReadyCheck.setForeground(Theme.TEXT);
-        autoReadyCheck.setOpaque(false);
-        autoReadyCheck.setFocusPainted(true);
-        autoReadyCheck.setVisible(true);
-        autoReadyCheck.addActionListener(e -> {
-            PREFS.putBoolean("auto_ready", autoReadyCheck.isSelected());
-            checkAutoReady();
-        });
-        autoReadyCheck.setHorizontalAlignment(SwingConstants.CENTER);
-        waitingActions.add(autoReadyCheck, BorderLayout.SOUTH);
+        waitingActions.add(ready);
+        waitingActions.add(start);
         waitingActions.revalidate();
     }
 
@@ -221,6 +201,8 @@ public final class GamePanel extends JPanel {
     }
 
     public void start(String id, long uid) {
+        if (Objects.equals(roundId, id) && myId == uid) return;
+        closeSqueeze();
         resultTimer.stop();
         this.roundId = id;
         this.myId = uid;
@@ -228,8 +210,6 @@ public final class GamePanel extends JPanel {
         this.mine = null;
         this.bets = null;
         this.result = null;
-        this.hidden = false;
-        eye.setText("Ẩn bài");
         table.clearRound();
         Sound.play("deal");
         render();
@@ -278,6 +258,7 @@ public final class GamePanel extends JPanel {
         if (!accepts(value.roundId()) || result != null) {
             return;
         }
+        closeSqueeze();
         this.result = value;
         this.resultDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(RoundResult.DISPLAY_SECONDS);
         resultTimer.restart();
@@ -305,14 +286,13 @@ public final class GamePanel extends JPanel {
     }
 
     private void finishResult() {
+        closeSqueeze();
         resultTimer.stop();
         this.roundId = null;
         this.game = null;
         this.mine = null;
         this.bets = null;
         this.result = null;
-        this.hidden = false;
-        eye.setText("Ẩn bài");
         table.clearRound();
     }
 
@@ -347,7 +327,13 @@ public final class GamePanel extends JPanel {
         allIn.setEnabled(turn);
         raise.setEnabled(turn && mine.myBalance().add(mine.myCurrentBet()).compareTo(bets.currentHighBet()) > 0);
         raiseTo.setEnabled(raise.isEnabled());
-        eye.setEnabled(mine != null);
+        boolean canView = enabled && mine != null && mine.myCards() != null && mine.myCards().size() == 3
+                && roundId != null && result == null;
+        eye.setEnabled(canView);
+        eye.setText(!reveals.complete() ? "Mở hết" : reveals.covered() ? "Xem lại" : "Ẩn bài");
+        eye.setToolTipText(!reveals.complete() ? "Mở ngay cả 3 lá, bỏ qua thao tác nặn" : "Ẩn hoặc xem lại bài đã mở");
+        squeezeBtn.setEnabled(canView && !reveals.complete());
+        squeezeBtn.setText(reveals.complete() ? "Đã mở 3/3" : "Nặn bài (" + reveals.count() + "/3)");
 
         String text;
         if (result != null) {
@@ -369,7 +355,7 @@ public final class GamePanel extends JPanel {
             }
 
             long seconds = Math.max(0, (resultDeadline - System.nanoTime() + 999_999_999L) / 1_000_000_000L);
-            text += "  Kết quả tự ẩn sau " + seconds + " giây. Sau đó bạn quyết định có chơi tiếp.";
+            text += "  Kết quả tự ẩn sau " + seconds + " giây.";
         } else if (active()) {
             if (mine == null) {
                 text = "Bạn đang xem ván chơi.";
@@ -395,21 +381,24 @@ public final class GamePanel extends JPanel {
             } else if (room != null && room.players().stream().filter(p -> "PLAYING".equals(p.status())).count() < room.minPlayers()) {
                 text = "Mời thêm một người vào bàn để bắt đầu.";
             } else if (room != null && room.players().stream().filter(p -> "PLAYING".equals(p.status())).anyMatch(p -> !p.ready())) {
-                text = "Bấm Sẵn sàng khi bạn muốn vào ván.";
+                text = "Chọn Chơi tiếp khi bạn muốn tham gia ván.";
             } else {
                 text = "Tất cả đã sẵn sàng. Chờ bắt đầu ván mới.";
             }
         }
 
         if (result == null && room != null && "RESULT".equals(room.status())) {
-            text = "Đang chuyển sang bàn chờ. Bạn sẽ chọn sẵn sàng cho ván tiếp theo.";
+            text = "Đang chuyển sang ván kế tiếp…";
         }
 
         boolean inRound = roundId != null && result == null;
-        actionBar.setPreferredSize(new Dimension(0, inRound ? 134 : 42));
+        boolean waiting = room != null && "WAITING".equals(room.status()) && result == null && roundId == null;
+        actionBar.setPreferredSize(new Dimension(0, inRound ? 134 : waiting ? 78 : 42));
+        topBar.setVisible(!waiting);
         actionCenterStack.setVisible(inRound);
         eye.setVisible(inRound && mine != null);
         squeezeBtn.setVisible(inRound && mine != null);
+        updateSqueezeContext();
 
         boolean canRaise = raise.isEnabled();
         betPlus1.setEnabled(canRaise);
@@ -418,39 +407,41 @@ public final class GamePanel extends JPanel {
         betPot.setEnabled(canRaise);
         betMax.setEnabled(canRaise);
 
-        boolean waiting = room != null && "WAITING".equals(room.status()) && result == null && roundId == null;
         waitingPanel.setVisible(waiting);
 
         if (waiting) {
-            checkAutoReady();
             var me = room.players().stream().filter(p -> p.userId() == myId).findFirst().orElse(null);
             boolean spectator = me != null && "SPECTATOR".equals(me.status());
-            if (spectator) {
-                waitingTitle.setText("BẠN ĐANG XEM");
-                waitingTitle.setForeground(Theme.MUTED);
-            } else if (room.countdownSeconds() > 0) {
-                waitingTitle.setText("VÁN MỚI SAU " + room.countdownSeconds() + " GIÂY");
-                waitingTitle.setForeground(Theme.GOLD);
-            } else if (me != null && me.ready()) {
-                waitingTitle.setText("BẠN ĐÃ SẴN SÀNG");
-                waitingTitle.setForeground(Theme.GREEN);
-            } else {
-                waitingTitle.setText("SẴN SÀNG CHO VÁN MỚI");
-                waitingTitle.setForeground(Theme.GOLD);
-            }
-            waitingBet.setText("Cược cơ bản: " + Theme.points(room.betAmount()) + " điểm / người");
-
             var eligible = room.players().stream().filter(p -> "PLAYING".equals(p.status())).toList();
             long readyCount = eligible.stream().filter(RoomSnapshot.PlayerSlot::ready).count();
+            String bet = "Cược " + Theme.points(room.betAmount()) + " điểm";
             if (spectator) {
+                waitingTitle.setText("Bạn đang xem bàn");
+                waitingTitle.setForeground(Theme.MUTED);
                 waitingCount.setText("Chưa đủ điểm để tham gia ván mới.");
             } else if (room.countdownSeconds() > 0) {
-                waitingCount.setText("Mọi người đều đã sẵn sàng! Tự động chia bài sau " + room.countdownSeconds() + "s");
+                waitingTitle.setText("Ván mới sau " + room.countdownSeconds() + " giây");
+                waitingTitle.setForeground(Theme.GOLD);
+                waitingCount.setText(readyCount + " / " + eligible.size() + " sẵn sàng · " + bet);
+            } else if (me != null && !me.ready()) {
+                waitingTitle.setText("Bạn chưa tham gia ván kế tiếp");
+                waitingTitle.setForeground(Theme.MUTED);
+                waitingCount.setText("Bấm Chơi tiếp · " + bet);
             } else if (eligible.size() < room.minPlayers()) {
-                waitingCount.setText("Đang chờ thêm người vào bàn... (Tối thiểu " + room.minPlayers() + " người)");
+                waitingTitle.setText("Chờ thêm người vào bàn");
+                waitingTitle.setForeground(Theme.TEXT);
+                waitingCount.setText("Tối thiểu " + room.minPlayers() + " người · " + bet);
+            } else if (me != null && me.ready()) {
+                waitingTitle.setText("Bạn đã tham gia ván kế tiếp");
+                waitingTitle.setForeground(Theme.GREEN);
+                waitingCount.setText(readyCount + " / " + eligible.size() + " sẵn sàng · " + bet);
             } else {
-                waitingCount.setText(readyCount + " / " + eligible.size() + " người đã sẵn sàng");
+                waitingTitle.setText("Chờ ván kế tiếp");
+                waitingTitle.setForeground(Theme.TEXT);
+                waitingCount.setText(bet);
             }
+            waitingTitle.setToolTipText(waitingTitle.getText());
+            waitingCount.setToolTipText(waitingCount.getText());
         }
 
         status.setText(text);
@@ -491,54 +482,64 @@ public final class GamePanel extends JPanel {
         Sound.playChip();
     }
 
-    private void checkAutoReady() {
-        if (!autoReadyCheck.isSelected()) {
-            autoReadyTimer.stop();
-            return;
-        }
-        if (room != null && "WAITING".equals(room.status()) && hostReadyButton != null && hostReadyButton.isEnabled()) {
-            if ("Sẵn sàng".equals(hostReadyButton.getText())) {
-                autoReadyTimer.restart();
-            }
-        }
-    }
-
-    private void triggerAutoReady() {
-        autoReadyTimer.stop();
-        if (autoReadyCheck.isSelected() && room != null && "WAITING".equals(room.status())
-                && hostReadyButton != null && hostReadyButton.isEnabled()
-                && "Sẵn sàng".equals(hostReadyButton.getText())) {
-            hostReadyButton.doClick();
-        }
-    }
-
     public GameTablePanel table() {
         return table;
     }
 
     public void openCardSqueeze() {
-        if (mine == null || mine.myCards() == null || mine.myCards().size() < 3) {
+        if (!squeezeBtn.isEnabled()) {
+            return;
+        }
+        if (squeezeDialog != null && squeezeDialog.isDisplayable()) {
+            squeezeDialog.toFront();
             return;
         }
         var owner = javax.swing.SwingUtilities.getWindowAncestor(this);
         java.awt.Frame parentFrame = (owner instanceof java.awt.Frame f) ? f : null;
-        new CardSqueezeDialog(parentFrame, mine.myCards(), () -> {
-            hidden = false;
-            eye.setText("Ẩn bài");
-            table.hideCards(false);
-        }).setVisible(true);
+        String viewingRound = roundId;
+        var dialog = new CardSqueezeDialog(parentFrame, mine.myCards(), reveals, () -> {
+            if (accepts(viewingRound) && result == null) render();
+        });
+        squeezeDialog = dialog;
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowClosed(java.awt.event.WindowEvent e) {
+                if (squeezeDialog == dialog) {
+                    squeezeDialog = null;
+                    squeezeClock.stop();
+                }
+            }
+        });
+        updateSqueezeContext();
+        squeezeClock.start();
+        dialog.setVisible(true);
+    }
+
+    private void updateSqueezeContext() {
+        if (squeezeDialog == null) return;
+        boolean ownTurn = active() && Objects.equals(game.currentTurnUserId(), myId);
+        squeezeDialog.context(ownTurn
+                ? "Đến lượt bạn · Còn " + table.remainingTurnSeconds() + " giây để cược"
+                : "Thời gian cược vẫn chạy · Có thể trở về bàn bất cứ lúc nào", ownTurn);
+    }
+
+    private void closeSqueeze() {
+        squeezeClock.stop();
+        if (squeezeDialog != null) {
+            var dialog = squeezeDialog;
+            squeezeDialog = null;
+            dialog.dispose();
+        }
     }
 
     public void clear() {
+        closeSqueeze();
         resultTimer.stop();
-        autoReadyTimer.stop();
         this.roundId = null;
         this.game = null;
         this.mine = null;
         this.bets = null;
         this.result = null;
         this.room = null;
-        this.hidden = false;
         this.enabled = false;
         table.clear();
         render();

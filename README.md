@@ -56,7 +56,13 @@ Các giới hạn kết nối, heartbeat và lượt chơi có trong `server.pro
 
 Sảnh chơi hỗ trợ tìm số bàn, lọc bàn trống/người đang chờ và **Chơi ngay**. Bố cục tự đổi số cột theo cửa sổ. Thanh đầu có Xếp hạng, Lịch sử ván và Xin / Cho điểm; **•••** mở Luật chơi, Âm thanh và Đăng xuất. Trong bàn, trò chuyện và Điểm bạn bè nằm ở hai khối riêng. Giao diện vẫn dùng Java Swing/Java2D, không bổ sung thư viện.
 
-Trong bàn chờ, dùng **Xin điểm / Cho điểm** để chọn một người cùng bàn, nhập số điểm và lời nhắn. Nút **Xin / Cho điểm** ở thanh phiên mở hộp thư và lịch sử: người được xin có thể cho điểm hoặc từ chối; người xin được hủy. Yêu cầu tự hết hạn sau 2 phút. Khi cho điểm thành công, hai người phải sẵn sàng lại.
+Ảnh lá bài, bàn chơi và nhân vật được thu nhỏ có lọc và vẽ theo độ phân giải màn hình, gồm HiDPI. Icon chip và vương miện vẽ bằng Java2D để giữ nét khi co giãn. Cache ảnh có giới hạn bộ nhớ.
+
+Bài mới chia được úp cả ba lá. Bấm **Nặn bài**, giữ phần dưới lá bài và kéo lên từ từ: mặt bài hé dần từ mép dưới theo độ kéo. Kéo đủ xa rồi thả để mở; kéo ngắn rồi thả thì lá bài trở lại trạng thái úp. Đóng hộp vẫn giữ các lá chưa mở ở trạng thái úp, mở lại tiếp tục tiến độ. **Mở hết** mở ngay cả ba lá. Khi đã mở hết, có thể **Ẩn bài / Xem lại**. Thời gian cược vẫn chạy khi nặn; **Trở về bàn** hoặc Esc để hành động.
+
+Chuẩn bị ván mới chỉ hiển thị ở thanh nhỏ dưới bàn, không có khung sẵn sàng che giữa bàn. Đủ người và đủ điều kiện, máy chủ tự đếm ngược; vào ván thì thanh này ẩn ngay. **Tạm nghỉ** hủy sẵn sàng và dừng đếm ngược của bàn; **Chơi tiếp** xác nhận tham gia với mức cược hiện tại. Không có checkbox/timer tự sẵn sàng ở client để tự bật lại sau khi bạn đã chọn nghỉ.
+
+Trong bàn chờ, dùng **Xin điểm / Cho điểm** để chọn một người cùng bàn, nhập số điểm và lời nhắn. Nút **Xin / Cho điểm** ở thanh phiên mở hộp thư và lịch sử: người được xin có thể cho điểm hoặc từ chối; người xin được hủy. Yêu cầu tự hết hạn sau 2 phút. Khi cho điểm thành công, hai người bấm **Chơi tiếp** để xác nhận tham gia lại.
 
 Mặc định người cho cần hoàn tất ít nhất 3 ván, tối đa 2.000 điểm/lần và tổng 2.000 điểm trong 24 giờ; mỗi người gửi tối đa 3 yêu cầu/phút, mỗi cặp chỉ có một yêu cầu đang chờ. Các giá trị gift.* trong server.properties có thể ghi đè bằng Java system properties. Đây là giới hạn giảm lạm dụng điểm tặng tài khoản mới, không phải cơ chế chống tạo tài khoản phụ hoàn toàn. Xem [chi tiết xin/cho điểm](docs/Point_Transfers.md).
 

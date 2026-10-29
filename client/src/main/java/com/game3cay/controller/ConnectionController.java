@@ -1099,7 +1099,7 @@ public final class ConnectionController implements PacketListener {
         view.showRoom(nextSnapshot, currentUser.userId());
 
         if (returnedToWaiting) {
-            view.showMessage("Kết quả đã ẩn. Bạn có thể bấm Sẵn sàng cho ván mới hoặc rời bàn.");
+            view.showMessage("Bàn đang chuẩn bị ván kế tiếp. Chọn Tạm nghỉ nếu bạn chưa muốn chơi.");
         }
 
         for (RoomChatEvent chatEvent : pendingRoomChatEvents) {

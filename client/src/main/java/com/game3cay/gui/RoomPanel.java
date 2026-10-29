@@ -39,7 +39,7 @@ public final class RoomPanel extends JPanel {
     private final JPanel betControlsPanel = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 
     private final Theme.Button sendButton = new Theme.Button("Gửi", "gold");
-    private final Theme.Button readyButton = new Theme.Button("Sẵn sàng", "gold");
+    private final Theme.Button readyButton = new Theme.Button("Chơi tiếp", "plain");
     private final Theme.Button startButton = new Theme.Button("Bắt đầu", "gold");
     private final Theme.Button leaveButton = new Theme.Button("← Sảnh chơi", "plain");
     private final Theme.Button askPointsButton = new Theme.Button("Xin điểm", "plain");
@@ -56,8 +56,10 @@ public final class RoomPanel extends JPanel {
         setOpaque(false);
         setBorder(new EmptyBorder(14, 22, 12, 22));
 
-        readyButton.setPreferredSize(new Dimension(145, 44));
-        startButton.setPreferredSize(new Dimension(176, 44));
+        readyButton.setPreferredSize(new Dimension(128, 38));
+        startButton.setPreferredSize(new Dimension(160, 38));
+        readyButton.setFont(Theme.font(13, true));
+        startButton.setFont(Theme.font(13, true));
         gamePanel.setWaitingControls(readyButton, startButton);
 
         Theme.field(betAmountField);
@@ -253,14 +255,15 @@ public final class RoomPanel extends JPanel {
         givePointsButton.setToolTipText(isWaiting ? "Cho điểm cho người cùng bàn" : "Xin/cho điểm trong bàn chờ");
         pointRequestsButton.setEnabled(roomSnapshot != null);
         pointsHint.setText(!isWaiting ? "Khả dụng khi ván kết thúc" : hasPeer ? "Xin hoặc cho người cùng bàn" : "Chờ thêm người vào bàn");
+        readyButton.putClientProperty("active", mySlot != null && !mySlot.ready());
         if (mySlot != null && mySlot.ready()) {
-            readyButton.setText("Đã sẵn sàng");
+            readyButton.setText("Tạm nghỉ");
             readyButton.setEnabled(areActionsEnabled && isWaiting && "PLAYING".equals(mySlot.status()));
-            readyButton.setToolTipText("Bạn đang ở trạng thái sẵn sàng (bấm nếu muốn tạm dừng / hủy sẵn sàng)");
+            readyButton.setToolTipText("Tạm dừng tham gia ván kế tiếp và hủy đếm ngược của bàn");
         } else {
-            readyButton.setText("Sẵn sàng");
+            readyButton.setText("Chơi tiếp");
             readyButton.setEnabled(areActionsEnabled && isWaiting && mySlot != null && "PLAYING".equals(mySlot.status()));
-            readyButton.setToolTipText("Xác nhận sẵn sàng vào ván");
+            readyButton.setToolTipText("Xác nhận mức cược hiện tại và tham gia ván kế tiếp");
         }
 
         boolean isOwner = (roomSnapshot != null) && (roomSnapshot.ownerUserId() == currentUserId);

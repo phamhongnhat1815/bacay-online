@@ -17,7 +17,6 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.HierarchyEvent;
 import java.awt.geom.Ellipse2D;
-import java.awt.image.BufferedImage;
 import java.io.Serial;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +24,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
@@ -43,8 +41,7 @@ public final class GameTablePanel extends JPanel {
     private PlayerStateSnapshot mine;
     private BetStateSnapshot bets;
     private RoundResult result;
-    private boolean hidden;
-    private JComponent waitingOverlay;
+    private final HandRevealState reveals;
     private long dealtAt;
     private long turnAt;
     private int lastBeepSecond = -1;
@@ -89,35 +86,17 @@ public final class GameTablePanel extends JPanel {
     }
 
     public GameTablePanel() {
+        this(new HandRevealState());
+    }
+
+    GameTablePanel(HandRevealState reveals) {
+        this.reveals = reveals;
         setLayout(null);
         setOpaque(false);
         setPreferredSize(new Dimension(BASE_WIDTH, BASE_HEIGHT));
         addHierarchyListener(e -> {
             if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0) updateAnimationState();
         });
-    }
-
-    public void setWaitingOverlay(JComponent overlay) {
-        if (waitingOverlay != null) {
-            remove(waitingOverlay);
-        }
-        waitingOverlay = overlay;
-        add(overlay);
-        revalidate();
-    }
-
-    @Override
-    public void doLayout() {
-        if (waitingOverlay == null) {
-            return;
-        }
-        double scale = Math.min((double) getWidth() / BASE_WIDTH, (double) getHeight() / BASE_HEIGHT);
-        int oy = (int) ((getHeight() - BASE_HEIGHT * scale) / 2);
-        // Swing child fonts and buttons do not scale with the painted table.
-        int width = Math.min(getWidth() - 24, Math.max(450, (int) (500 * scale)));
-        int height = Math.min(getHeight() - 16, 172);
-        waitingOverlay.setBounds((getWidth() - width) / 2,
-                Math.max(8, oy + (int) (365 * scale) - height / 2), width, height);
     }
 
     @Override
@@ -141,8 +120,9 @@ public final class GameTablePanel extends JPanel {
 
     public void state(GameStateSnapshot g) {
         if (game == null
+                || !Objects.equals(game.roundId(), g.roundId())
                 || !Objects.equals(game.currentTurnUserId(), g.currentTurnUserId())
-                || game.stateVersion() != g.stateVersion()) {
+                || !Objects.equals(game.phase(), g.phase())) {
             turnAt = System.nanoTime();
             lastBeepSecond = -1;
         }
@@ -208,9 +188,8 @@ public final class GameTablePanel extends JPanel {
         Sound.playPotWin();
     }
 
-    public void hideCards(boolean value) {
-        this.hidden = value;
-        repaint();
+    int remainingTurnSeconds() {
+        return Math.max(0, (int) Math.ceil((TURN_DURATION_NANOS - (System.nanoTime() - turnAt)) / 1_000_000_000.0));
     }
 
     public void clearRound() {
@@ -218,7 +197,7 @@ public final class GameTablePanel extends JPanel {
         this.mine = null;
         this.bets = null;
         this.result = null;
-        this.hidden = false;
+        reveals.reset();
         this.dealtAt = System.nanoTime();
         this.lastBeepSecond = -1;
         this.flyingChips.clear();
@@ -258,8 +237,8 @@ public final class GameTablePanel extends JPanel {
 
         g.setColor(new Color(0, 0, 0, 55));
         g.fillOval(98, 154, 910, 460);
-        g.drawImage(Assets.get("dealer.png", 220), 472, 2, 156, 230, null);
-        g.drawImage(Assets.get("table.png", 1100), 95, 132, 910, 475, null);
+        Assets.draw(g, "dealer.png", 472, 2, 156, 230);
+        Assets.draw(g, "table.png", 95, 132, 910, 475);
 
         if (room == null) {
             g.dispose();
@@ -282,7 +261,7 @@ public final class GameTablePanel extends JPanel {
                 anyFlying = true;
                 double cx = chip.currentX(t);
                 double cy = chip.currentY(t);
-                g.drawImage(Assets.get("chips.png", 60), (int) cx - 18, (int) cy - 14, 36, 26, null);
+                GameIcons.chips(g, (int) cx - 18, (int) cy - 14, 36, 26);
             }
         }
         if (!anyFlying && !flyingChips.isEmpty()) {
@@ -317,8 +296,6 @@ public final class GameTablePanel extends JPanel {
 
     private void drawCenter(Graphics2D g) {
         if (bets == null && result == null) {
-            g.setFont(Theme.font(30, true));
-            center(g, "BA CÂY", 550, 234, new Color(214, 197, 138, 180));
             if (!"WAITING".equals(room.status())) {
                 g.setFont(Theme.font(15, true));
                 center(g, "Đang chuẩn bị bàn cho ván mới…", 550, 365, Theme.GOLD);
@@ -336,7 +313,7 @@ public final class GameTablePanel extends JPanel {
             g.fillRoundRect(420, 339, 260, 76, 30, 30);
             g.setColor(new Color(212, 175, 55, 180));
             g.drawRoundRect(420, 339, 260, 76, 30, 30);
-            g.drawImage(Assets.get("chips.png", 110), 436, 352, 65, 46, null);
+            GameIcons.chips(g, 436, 352, 65, 46);
 
             g.setFont(Theme.font(12, true));
             center(g, "TỔNG ĐIỂM TRÊN BÀN", 580, 360, Theme.MUTED);
@@ -424,10 +401,9 @@ public final class GameTablePanel extends JPanel {
         g.setStroke(new BasicStroke(turn ? (isUrgent ? 3.0f : 2.5f) : 1.2f));
         g.drawRoundRect(left, top, w, h, 17, 17);
 
-        var avatar = Assets.get("avatars/avatar_player_" + ((p.userId() - 1) % 6 + 1) + ".png", 100);
         var clipped = (Graphics2D) g.create();
         clipped.setClip(new Ellipse2D.Double(left + 9, top + 10, 47, 47));
-        clipped.drawImage(avatar, left + 8, top + 9, 49, 49, null);
+        Assets.draw(clipped, "avatars/avatar_player_" + ((p.userId() - 1) % 6 + 1) + ".png", left + 8, top + 9, 49, 49);
         clipped.dispose();
 
         g.setColor(Theme.GOLD);
@@ -476,7 +452,7 @@ public final class GameTablePanel extends JPanel {
         g.drawString(shorten(g, sub, 99), left + 65, top + 46);
 
         if (room.ownerUserId() == p.userId()) {
-            g.drawImage(Assets.get("icons/crown.png", 30), left + w - 19, top - 11, 25, 25, null);
+            GameIcons.crown(g, left + w - 19, top - 11, 25, 25);
         }
 
         if (self) {
@@ -512,21 +488,17 @@ public final class GameTablePanel extends JPanel {
             return;
         }
 
-        List<Card> cards = (self && mine != null && !hidden)
-                ? mine.myCards()
-                : (playerResult != null && playerResult.hand() != null ? playerResult.hand().cards() : List.of());
-
-        if (self && hidden) {
-            cards = List.of();
-        }
+        boolean showdown = playerResult != null && playerResult.hand() != null;
+        List<Card> cards = showdown ? playerResult.hand().cards()
+                : self && mine != null ? mine.myCards() : List.of();
 
         int cw = self ? 91 : 48;
         int ch = self ? 127 : 67;
-        int step = self ? 68 : 29;
+        int step = self ? cw + 9 : 29;
         int cx = (int) (550 + 306 * Math.cos(angle));
         int cy = (int) (365 + 145 * Math.sin(angle));
         if (self) {
-            cy -= 18;
+            cy -= 30;
         }
         int left = cx - (cw + 2 * step) / 2;
         int top = cy - ch / 2;
@@ -542,11 +514,9 @@ public final class GameTablePanel extends JPanel {
             if (self && result == null) {
                 dy = (int) (Math.max(0, 1.0 - (double) (System.nanoTime() - dealtAt) / 700_000_000.0) * 42.0 * (i + 1) / 3.0);
             }
-            hand.setColor(new Color(0, 0, 0, 100));
-            hand.fillRoundRect(left + i * step + 3, top + dy + 5, cw, ch, 6, 6);
-
-            BufferedImage image = (cards.size() > i) ? Assets.card(cards.get(i)) : Assets.get("cards/back.png", 200);
-            hand.drawImage(image, left + i * step, top + dy, cw, ch, null);
+            if (cards.size() > i && (showdown || self && reveals.visible(i)))
+                Assets.drawCard(hand, cards.get(i), left + i * step, top + dy, cw, ch);
+            else Assets.drawCardBack(hand, left + i * step, top + dy, cw, ch);
         }
         hand.dispose();
 

@@ -166,7 +166,8 @@ public final class MainFrame extends JFrame {
                         + "Bồ đội: cả ba lá là J, Q hoặc K.\n"
                         + "Điểm: lấy hàng đơn vị của tổng; A = 1, 10/J/Q/K = 0.\n"
                         + "Cùng loại: so giá trị bài; nếu bằng, so chất Rô > Cơ > Bích > Chuồn.\n\n"
-                        + "Bấm Sẵn sàng; chủ bàn bấm Bắt đầu khi đủ ít nhất 2 người.\n"
+                        + "Đủ người sẵn sàng, bàn tự đếm ngược để chia bài.\n"
+                        + "Chọn Tạm nghỉ / Chơi tiếp ở thanh dưới bàn để đổi trạng thái.\n"
                         + "Tài khoản mới được tặng 1.000 điểm giải trí.",
                 "Luật bàn Ba Cây",
                 JOptionPane.PLAIN_MESSAGE);

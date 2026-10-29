@@ -71,12 +71,13 @@ class UiLayoutTest {
             RoomPanel room = new RoomPanel();
             room.render(waitingRoom(), 1); room.setActionsEnabled(true);
             room.setSize(1084, 570); layout(room);
-            JButton ready = button(room, "Sẵn sàng"), start = button(room, "Bắt đầu ngay");
+            JButton ready = button(room, "Chơi tiếp"), start = button(room, "Bắt đầu ngay");
             assertTrue(ready.isEnabled()); assertFalse(start.isEnabled());
             assertTrue(start.getWidth() >= start.getPreferredSize().width);
             assertTrue(ready.getWidth() >= ready.getPreferredSize().width);
             assertTrue(components(room, JLabel.class).stream().noneMatch(l -> l.getText().startsWith("Tất cả đã sẵn sàng")));
-            assertTrue(components(room, JLabel.class).stream().anyMatch(l -> l.getText().contains("Bấm Sẵn sàng")));
+            assertTrue(components(room, JLabel.class).stream().anyMatch(l -> l.getText().contains("Bấm Chơi tiếp")));
+            assertEquals(0, room.game().table().getComponentCount(), "The painted table must have no readiness overlay");
             room.clear();
         });
     }

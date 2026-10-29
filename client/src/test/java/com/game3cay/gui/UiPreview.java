@@ -3,6 +3,7 @@ package com.game3cay.gui;
 import com.game3cay.shared.model.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.event.MouseEvent;
 import java.math.BigDecimal;
 import java.nio.file.*;
 import java.util.ArrayList;
@@ -37,6 +38,12 @@ public final class UiPreview {
                     frame.showRoom(waiting, 1); frame.setOperationEnabled(true);
                     frame.room().appendChat(new ChatMessage(2L, "Minh Anh", "Cả nhà sẵn sàng chưa?", "TEXT", System.currentTimeMillis()));
                     capture(frame.getContentPane(), width, height, output.resolve("waiting-" + width + ".png"));
+                    var countdown = new RoomSnapshot(waiting.roomId(), waiting.roomCode(), waiting.roomName(), "WAITING",
+                            waiting.ownerUserId(), waiting.minPlayers(), waiting.maxPlayers(), waiting.betAmount(),
+                            waiting.players().stream().map(p -> new RoomSnapshot.PlayerSlot(p.userId(), p.displayName(),
+                                    p.seatNumber(), true, p.status())).toList(), waiting.stateVersion() + 1, 3);
+                    frame.showRoom(countdown, 1);
+                    capture(frame.getContentPane(), width, height, output.resolve("countdown-" + width + ".png"));
                     frame.showRoom(room("PLAYING"), 1);
                     var game = frame.room().game(); game.start("preview", 1);
                     game.mine(new PlayerStateSnapshot("preview", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.KING, Suit.CO),
@@ -47,6 +54,8 @@ public final class UiPreview {
                     var dealtAt = GameTablePanel.class.getDeclaredField("dealtAt");
                     dealtAt.setAccessible(true); dealtAt.setLong(game.table(), 0);
                     capture(frame.getContentPane(), width, height, output.resolve("playing-" + width + ".png"));
+                    components(game, JButton.class).stream().filter(b -> "Mở hết".equals(b.getText())).findFirst().orElseThrow().doClick(0);
+                    capture(frame.getContentPane(), width, height, output.resolve("revealed-" + width + ".png"));
                     frame.room().clear();
                     var fullRoom = new ArrayList<>(waiting.players());
                     for (int seat = 4; seat <= 8; seat++) fullRoom.add(new RoomSnapshot.PlayerSlot(seat, "Người chơi " + seat, seat, false, "PLAYING"));
@@ -55,6 +64,30 @@ public final class UiPreview {
                     capture(frame.getContentPane(), width, height, output.resolve("full-table-" + width + ".png"));
                     frame.room().clear();
                 }
+                var squeezeState = new HandRevealState();
+                var squeezeCards = List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.KING, Suit.CO), new Card(Rank.QUEEN, Suit.BICH));
+                var squeeze = new CardSqueezePanel(squeezeCards, squeezeState, () -> {}, () -> {});
+                squeeze.context("Đến lượt bạn · Còn 24 giây để cược", true);
+                capture(squeeze, 684, 510, output.resolve("squeeze-face-down.png"));
+                var squeezeCanvas = components(squeeze, JComponent.class).stream()
+                        .filter(c -> "card-squeeze-canvas".equals(c.getName())).findFirst().orElseThrow();
+                Rectangle card = squeeze.cardBounds(0);
+                int pullX = card.x + card.width / 2, pullY = card.y + card.height - 10;
+                squeezeCanvas.dispatchEvent(new MouseEvent(squeezeCanvas, MouseEvent.MOUSE_PRESSED, 1,
+                        MouseEvent.BUTTON1_DOWN_MASK, pullX, pullY, 1, false, MouseEvent.BUTTON1));
+                for (int percent : new int[]{25, 55, 80}) {
+                    int endY = pullY - card.height * percent / 100;
+                    squeezeCanvas.dispatchEvent(new MouseEvent(squeezeCanvas, MouseEvent.MOUSE_DRAGGED, 2,
+                            MouseEvent.BUTTON1_DOWN_MASK, pullX, endY, 0, false, MouseEvent.NOBUTTON));
+                    if (percent < 80) capture(squeeze, 684, 510, output.resolve("squeeze-pull-" + percent + ".png"));
+                    else squeezeCanvas.dispatchEvent(new MouseEvent(squeezeCanvas, MouseEvent.MOUSE_RELEASED, 3,
+                            0, pullX, endY, 1, false, MouseEvent.BUTTON1));
+                }
+                var partial = new CardSqueezePanel(squeezeCards, squeezeState, () -> {}, () -> {});
+                partial.context("Đến lượt bạn · Còn 18 giây để cược", true);
+                capture(partial, 684, 510, output.resolve("squeeze-one-open.png"));
+                squeezeState.revealAll();
+                capture(new CardSqueezePanel(squeezeCards, squeezeState, () -> {}, () -> {}), 684, 510, output.resolve("squeeze-complete.png"));
                 var points = new PointExchangeDialog(frame);
                 try {
                     points.context(1, room("WAITING"), new BigDecimal("12500"), java.util.Set.of());
@@ -71,8 +104,10 @@ public final class UiPreview {
     }
     private static void capture(Container root, int w, int h, Path path) throws Exception {
         root.setSize(w, h); for (int i = 0; i < 3; i++) layout(root);
-        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = image.createGraphics(); root.printAll(g); g.dispose();
+        int scale = Integer.getInteger("preview.scale", 1);
+        if (scale < 1 || scale > 3) throw new IllegalArgumentException("Preview scale must be 1, 2 or 3");
+        BufferedImage image = new BufferedImage(w * scale, h * scale, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics(); g.scale(scale, scale); root.printAll(g); g.dispose();
         ImageIO.write(image, "png", path.toFile());
     }
     private static void layout(Container c) {

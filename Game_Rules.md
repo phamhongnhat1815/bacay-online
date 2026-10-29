@@ -136,6 +136,16 @@ flowchart TD
 - Khi một hoặc nhiều người chơi chọn **Tất tay** với số điểm ít hơn mức cược của những người khác, hệ thống sẽ tự động chia quỹ cược thành **Main Pot (Pot chính)** và một hoặc nhiều **Side Pots (Pot phụ)**.
 - Người tất tay chỉ được quyền tranh giải trong các Pot mà họ có tham gia đóng góp điểm. Những người còn nhiều điểm sẽ tiếp tục cược với nhau để tranh Side Pot riêng.
 
+### 4.4. Xem Và Nặn Bài Riêng
+- Ba lá mới chia được úp. Chọn **Nặn bài**, giữ phần dưới từng lá rồi kéo lên từ từ để hé mặt bài từ mép dưới; kéo đủ xa rồi thả để mở lá đó.
+- **Mở hết** cho phép xem ngay cả ba lá. Đóng hộp nặn không tự mở các lá còn lại; có thể mở lại để tiếp tục trong cùng ván.
+- Thời gian cược vẫn chạy khi nặn bài. Bấm **Trở về bàn** hoặc Esc để thực hiện hành động cược. Cách xem bài không thay đổi luật cược hay kết quả ván.
+
+### 4.5. Chuẩn Bị Ván Kế Tiếp
+- Bàn tự đếm ngược khi đủ người sẵn sàng và đủ điều kiện. Thời gian chờ nằm ở thanh dưới bàn, không che bài hoặc vị trí người chơi.
+- Trong lúc chờ, bấm **Tạm nghỉ** để hủy sẵn sàng và dừng đếm ngược. Bấm **Chơi tiếp** để xác nhận tham gia với mức cược hiện tại; chủ bàn có thể **Bắt đầu ngay** khi hợp lệ.
+- Thanh chuẩn bị ẩn khi bắt đầu ván. Sau khi đổi mức cược hoặc chuyển điểm, người bị hủy sẵn sàng cần bấm **Chơi tiếp** để xác nhận lại.
+
 ---
 
 ## 5. Kết Thúc Ván & Xử Lý Sự Cố Kết Nối
