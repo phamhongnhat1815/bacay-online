@@ -35,6 +35,7 @@ class DataRegressionTest {
             s.execute("CREATE TABLE play_rounds(round_id VARCHAR(64) PRIMARY KEY,ended_at BIGINT)");
             s.execute("CREATE TABLE play_ledger(round_id VARCHAR(64),user_id BIGINT,delta DECIMAL(15,2),"
                     + "balance_before DECIMAL(15,2),balance_after DECIMAL(15,2))");
+            PointTestSchema.create(c);
         }
     }
 

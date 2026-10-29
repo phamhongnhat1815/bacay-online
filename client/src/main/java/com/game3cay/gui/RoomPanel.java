@@ -3,8 +3,6 @@ package com.game3cay.gui;
 import com.game3cay.shared.model.ChatMessage;
 import com.game3cay.shared.model.RoomSnapshot;
 
-import javax.swing.Box;
-import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -17,7 +15,6 @@ import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
@@ -33,16 +30,21 @@ public final class RoomPanel extends JPanel {
     private final JLabel detailLabel = Theme.label("", 12, Theme.MUTED);
 
     private final JTextPane chatPane = new JTextPane();
-    private final JTextField contentField = new JTextField();
+    private final JTextField contentField = new Theme.HintField("Nhập tin nhắn…");
+    private final JLabel chatEmpty = Theme.label("Chưa có tin nhắn. Chào mọi người nhé!", 11, Theme.MUTED);
+    private final JLabel pointsHint = Theme.label("Dùng khi bàn đang chờ", 11, Theme.MUTED);
 
     private final JTextField betAmountField = new JTextField("10", 6);
-    private final Theme.Button changeBetButton = new Theme.Button("Đổi cược", "gold");
+    private final Theme.Button changeBetButton = new Theme.Button("Đổi cược", "plain");
     private final JPanel betControlsPanel = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
 
     private final Theme.Button sendButton = new Theme.Button("Gửi", "gold");
     private final Theme.Button readyButton = new Theme.Button("Sẵn sàng", "gold");
     private final Theme.Button startButton = new Theme.Button("Bắt đầu", "gold");
     private final Theme.Button leaveButton = new Theme.Button("← Sảnh chơi", "plain");
+    private final Theme.Button askPointsButton = new Theme.Button("Xin điểm", "plain");
+    private final Theme.Button givePointsButton = new Theme.Button("Cho điểm", "plain");
+    private final Theme.Button pointRequestsButton = new Theme.Button("Yêu cầu điểm", "plain");
 
     private final GamePanel gamePanel = new GamePanel();
     private RoomSnapshot roomSnapshot;
@@ -55,12 +57,14 @@ public final class RoomPanel extends JPanel {
         setBorder(new EmptyBorder(14, 22, 12, 22));
 
         readyButton.setPreferredSize(new Dimension(145, 44));
-        startButton.setPreferredSize(new Dimension(105, 44));
+        startButton.setPreferredSize(new Dimension(176, 44));
         gamePanel.setWaitingControls(readyButton, startButton);
 
         Theme.field(betAmountField);
         betAmountField.setPreferredSize(new Dimension(86, 42));
         betAmountField.setToolTipText("Cược cơ bản mỗi người góp đầu ván; tối đa 2 số thập phân");
+        betAmountField.getAccessibleContext().setAccessibleName("Mức cược cơ bản của bàn");
+        changeBetButton.setPreferredSize(new Dimension(104, 42));
 
         betControlsPanel.add(Theme.label("Cược cơ bản", 12, Theme.MUTED));
         betControlsPanel.add(betAmountField);
@@ -89,35 +93,58 @@ public final class RoomPanel extends JPanel {
 
         var sidebarGlass = new Theme.Glass(new BorderLayout(0, 12));
         sidebarGlass.setBorder(new EmptyBorder(18, 15, 15, 15));
-        sidebarGlass.setPreferredSize(new Dimension(220, 500));
+        sidebarGlass.setPreferredSize(new Dimension(264, 500));
 
-        var chatHeader = Theme.label("TRÒ CHUYỆN", 12, Theme.GOLD);
-        chatHeader.setFont(Theme.font(12, true));
+        var chatHeader = Theme.label("Trò chuyện trong bàn", 15, Theme.TEXT);
+        chatHeader.setFont(Theme.font(15, true));
         sidebarGlass.add(chatHeader, BorderLayout.NORTH);
+        var pointCard = new Theme.Glass(new BorderLayout(0, 9));
+        pointCard.setBorder(new EmptyBorder(16, 15, 16, 15));
+        var pointHeading = Theme.transparent(new GridLayout(0, 1, 0, 5));
+        var pointTitle = Theme.label("Điểm bạn bè", 15, Theme.TEXT);
+        pointTitle.setFont(Theme.font(15, true));
+        pointHeading.add(pointTitle);
+        pointHeading.add(pointsHint);
+        pointCard.add(pointHeading, BorderLayout.NORTH);
+        var pointActions = Theme.transparent(new GridLayout(1, 2, 6, 0));
+        askPointsButton.setPreferredSize(new Dimension(85, 36));
+        givePointsButton.setPreferredSize(new Dimension(85, 36));
+        pointActions.add(askPointsButton);
+        pointActions.add(givePointsButton);
+        pointCard.add(pointActions, BorderLayout.CENTER);
+        pointRequestsButton.setPreferredSize(new Dimension(180, 36));
+        pointCard.add(pointRequestsButton, BorderLayout.SOUTH);
 
         chatPane.setEditable(false);
         chatPane.setOpaque(false);
         chatPane.setFont(Theme.font(13, false));
         chatPane.setForeground(Theme.TEXT);
         chatPane.setBorder(null);
+        chatPane.getAccessibleContext().setAccessibleName("Tin nhắn trong bàn");
 
         var chatScroll = new JScrollPane(chatPane);
         chatScroll.setBorder(null);
         chatScroll.setOpaque(false);
         chatScroll.getViewport().setOpaque(false);
-        sidebarGlass.add(chatScroll, BorderLayout.CENTER);
+        var chatBody = Theme.transparent(new BorderLayout(0, 10));
+        chatBody.add(chatEmpty, BorderLayout.NORTH);
+        chatBody.add(chatScroll, BorderLayout.CENTER);
+        sidebarGlass.add(chatBody, BorderLayout.CENTER);
 
-        var chatInputArea = Theme.transparent(new BorderLayout(0, 8));
+        var chatInputArea = Theme.transparent(new BorderLayout(8, 0));
         Theme.field(contentField);
         contentField.setToolTipText("Tin nhắn tối đa 500 ký tự (Enter để gửi)");
-        chatInputArea.add(contentField, BorderLayout.NORTH);
+        chatInputArea.add(contentField, BorderLayout.CENTER);
 
-        sendButton.setPreferredSize(new Dimension(110, 39));
-        chatInputArea.add(sendButton, BorderLayout.CENTER);
-        chatInputArea.add(Theme.label("Lịch sự để cuộc vui trọn vẹn.", 11, Theme.MUTED), BorderLayout.SOUTH);
+        sendButton.setPreferredSize(new Dimension(57, 42));
+        chatInputArea.add(sendButton, BorderLayout.EAST);
 
         sidebarGlass.add(chatInputArea, BorderLayout.SOUTH);
-        centralArea.add(sidebarGlass, BorderLayout.EAST);
+        var sidebar = Theme.transparent(new BorderLayout(0, 12));
+        sidebar.setPreferredSize(new Dimension(264, 500));
+        sidebar.add(sidebarGlass, BorderLayout.CENTER);
+        sidebar.add(pointCard, BorderLayout.SOUTH);
+        centralArea.add(sidebar, BorderLayout.EAST);
         add(centralArea, BorderLayout.CENTER);
 
         clear();
@@ -162,6 +189,11 @@ public final class RoomPanel extends JPanel {
     public void onLeave(Runnable runnable) {
         leaveButton.addActionListener(e -> runnable.run());
     }
+
+    public void onAskPoints(Runnable action) { askPointsButton.addActionListener(e -> action.run()); }
+    public void onGivePoints(Runnable action) { givePointsButton.addActionListener(e -> action.run()); }
+    public void onPointRequests(Runnable action) { pointRequestsButton.addActionListener(e -> action.run()); }
+    public void pointRequestCount(int count) { pointRequestsButton.setText(count == 0 ? "Yêu cầu điểm" : "Yêu cầu điểm (" + count + ")"); }
 
     public void onSend(Runnable runnable) {
         sendButton.addActionListener(e -> runnable.run());
@@ -214,8 +246,15 @@ public final class RoomPanel extends JPanel {
         }
 
         boolean isWaiting = (roomSnapshot != null) && "WAITING".equals(roomSnapshot.status());
+        boolean hasPeer = roomSnapshot != null && roomSnapshot.players().stream().anyMatch(p -> p.userId() != currentUserId);
+        askPointsButton.setEnabled(areActionsEnabled && isWaiting && hasPeer);
+        givePointsButton.setEnabled(areActionsEnabled && isWaiting && hasPeer);
+        askPointsButton.setToolTipText(isWaiting ? "Xin điểm từ người cùng bàn" : "Xin/cho điểm trong bàn chờ");
+        givePointsButton.setToolTipText(isWaiting ? "Cho điểm cho người cùng bàn" : "Xin/cho điểm trong bàn chờ");
+        pointRequestsButton.setEnabled(roomSnapshot != null);
+        pointsHint.setText(!isWaiting ? "Khả dụng khi ván kết thúc" : hasPeer ? "Xin hoặc cho người cùng bàn" : "Chờ thêm người vào bàn");
         if (mySlot != null && mySlot.ready()) {
-            readyButton.setText("✅ Đã sẵn sàng");
+            readyButton.setText("Đã sẵn sàng");
             readyButton.setEnabled(areActionsEnabled && isWaiting && "PLAYING".equals(mySlot.status()));
             readyButton.setToolTipText("Bạn đang ở trạng thái sẵn sàng (bấm nếu muốn tạm dừng / hủy sẵn sàng)");
         } else {
@@ -260,6 +299,7 @@ public final class RoomPanel extends JPanel {
             return;
         }
         StyledDocument doc = chatPane.getStyledDocument();
+        chatEmpty.setVisible(false);
         try {
             if (doc.getLength() > 25000) {
                 doc.remove(0, Math.min(6000, doc.getLength()));
@@ -294,6 +334,7 @@ public final class RoomPanel extends JPanel {
     public void clear() {
         roomSnapshot = null;
         chatPane.setText("");
+        chatEmpty.setVisible(true);
         clearInput();
         gamePanel.clear();
         areActionsEnabled = false;

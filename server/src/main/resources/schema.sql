@@ -150,3 +150,69 @@ CALL bacay_starting_points();
 DROP PROCEDURE IF EXISTS bacay_starting_points;
 
 INSERT IGNORE INTO app_migrations(name) VALUES ('schema_v2_secure_admin');
+
+CREATE TABLE IF NOT EXISTS point_requests (
+ request_id VARCHAR(36) PRIMARY KEY,
+ operation_id VARCHAR(36) NOT NULL,
+ payload_hash VARCHAR(64) NOT NULL,
+ requester_id BIGINT NOT NULL,
+ requester_name VARCHAR(100) NOT NULL,
+ target_id BIGINT NOT NULL,
+ target_name VARCHAR(100) NOT NULL,
+ room_id BIGINT NOT NULL,
+ amount DECIMAL(15,2) NOT NULL,
+ message VARCHAR(120) NOT NULL,
+ status VARCHAR(20) NOT NULL,
+ created_at BIGINT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ transfer_id VARCHAR(36) NULL,
+ UNIQUE(requester_id,operation_id),
+ INDEX ix_point_requests_requester(requester_id,created_at),
+ INDEX ix_point_requests_target(target_id,created_at),
+ INDEX ix_point_requests_expiry(status,expires_at),
+ FOREIGN KEY(requester_id) REFERENCES users(id),
+ FOREIGN KEY(target_id) REFERENCES users(id),
+ CHECK(requester_id<>target_id),
+ CHECK(amount>0),
+ CHECK(expires_at>created_at),
+ CHECK(status IN ('PENDING','FULFILLED','DECLINED','CANCELLED','EXPIRED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS point_transfers (
+ transfer_id VARCHAR(36) PRIMARY KEY,
+ operation_id VARCHAR(36) NOT NULL,
+ payload_hash VARCHAR(64) NOT NULL,
+ request_id VARCHAR(36) NULL UNIQUE,
+ room_id BIGINT NOT NULL,
+ sender_id BIGINT NOT NULL,
+ sender_name VARCHAR(100) NOT NULL,
+ recipient_id BIGINT NOT NULL,
+ recipient_name VARCHAR(100) NOT NULL,
+ amount DECIMAL(15,2) NOT NULL,
+ message VARCHAR(120) NOT NULL,
+ committed_at BIGINT NOT NULL,
+ UNIQUE(sender_id,operation_id),
+ INDEX ix_point_transfers_sender(sender_id,committed_at),
+ INDEX ix_point_transfers_recipient(recipient_id,committed_at),
+ FOREIGN KEY(request_id) REFERENCES point_requests(request_id),
+ FOREIGN KEY(sender_id) REFERENCES users(id),
+ FOREIGN KEY(recipient_id) REFERENCES users(id),
+ CHECK(sender_id<>recipient_id),
+ CHECK(amount>0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS point_transfer_entries (
+ transfer_id VARCHAR(36) NOT NULL,
+ user_id BIGINT NOT NULL,
+ delta DECIMAL(15,2) NOT NULL,
+ balance_before DECIMAL(15,2) NOT NULL,
+ balance_after DECIMAL(15,2) NOT NULL,
+ PRIMARY KEY(transfer_id,user_id),
+ FOREIGN KEY(transfer_id) REFERENCES point_transfers(transfer_id),
+ FOREIGN KEY(user_id) REFERENCES users(id),
+ CHECK(delta<>0),
+ CHECK(balance_before>=0 AND balance_after>=0),
+ CHECK(balance_after=balance_before+delta)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO app_migrations(name) VALUES ('schema_v3_point_transfers');

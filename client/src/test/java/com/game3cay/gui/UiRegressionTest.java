@@ -15,7 +15,7 @@ class UiRegressionTest {
         Assets.preload();
     }
 
-    @Test void allButtonVariantsIncludingUnknownHavePaintableAssets() throws Exception {
+    @Test void allButtonVariantsIncludingUnknownPaintInBothEnabledAndDisabledStates() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             for (String variant : new String[] {"blue", "gold", "green", "orange", "red", "plain", "navy", "unknown"}) {
                 var button = new Theme.Button("Test", variant);

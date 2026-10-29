@@ -41,17 +41,17 @@ public final class GamePanel extends JPanel {
     private final JTextField raiseTo = new JTextField("20", 5);
 
     private final Theme.Button call = new Theme.Button("Theo", "gold");
-    private final Theme.Button raise = new Theme.Button("Tố đến", "gold");
+    private final Theme.Button raise = new Theme.Button("Tố đến", "blue");
     private final Theme.Button fold = new Theme.Button("Úp bài", "plain");
     private final Theme.Button allIn = new Theme.Button("Tất tay", "red");
     private final Theme.Button eye = new Theme.Button("Ẩn bài", "plain");
-    private final Theme.Button squeezeBtn = new Theme.Button("🖐 Nặn bài", "blue");
+    private final Theme.Button squeezeBtn = new Theme.Button("Nặn bài", "plain");
 
     private final Theme.Button betPlus1 = new Theme.Button("+1x", "plain");
     private final Theme.Button betPlus2 = new Theme.Button("+2x", "plain");
-    private final Theme.Button betHalfPot = new Theme.Button("1/2 Pot", "plain");
-    private final Theme.Button betPot = new Theme.Button("Pot", "plain");
-    private final Theme.Button betMax = new Theme.Button("Max", "plain");
+    private final Theme.Button betHalfPot = new Theme.Button("½ quỹ", "plain");
+    private final Theme.Button betPot = new Theme.Button("Cả quỹ", "plain");
+    private final Theme.Button betMax = new Theme.Button("Tối đa", "plain");
     private final JPanel quickBetsPanel = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 6, 0));
 
     private GameStateSnapshot game;
@@ -67,14 +67,14 @@ public final class GamePanel extends JPanel {
     private final JPanel actionBar = Theme.transparent(new BorderLayout(0, 6));
     private final JPanel topBar = Theme.transparent(new BorderLayout(10, 0));
     private final JPanel utilityBar = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-    private final JPanel actionCenterStack = Theme.transparent(new GridLayout(0, 1, 0, 4));
+    private final JPanel actionCenterStack = Theme.transparent(new BorderLayout(0, 8));
     private final JPanel bettingBar = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
 
-    private final Theme.Glass waitingPanel = new Theme.Glass(new BorderLayout(0, 8));
+    private final Theme.Glass waitingPanel = new Theme.Glass(new BorderLayout(0, 4));
     private final JLabel waitingTitle = Theme.label("SẴN SÀNG CHO VÁN MỚI", 15, Theme.GOLD);
     private final JLabel waitingBet = Theme.label("", 13, Theme.TEXT);
     private final JLabel waitingCount = Theme.label("", 12, Theme.MUTED);
-    private final JPanel waitingActions = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
+    private final JPanel waitingActions = Theme.transparent(new BorderLayout(0, 4));
 
     private long resultDeadline;
     private final Timer resultTimer = new Timer(100, e -> updateResultClock());
@@ -92,11 +92,11 @@ public final class GamePanel extends JPanel {
         squeezeBtn.setFont(Theme.font(12, true));
         utilityBar.add(eye);
         utilityBar.add(squeezeBtn);
-        topBar.add(status, BorderLayout.WEST);
+        topBar.add(status, BorderLayout.CENTER);
         topBar.add(utilityBar, BorderLayout.EAST);
         actionBar.add(topBar, BorderLayout.NORTH);
 
-        waitingPanel.setBorder(new EmptyBorder(12, 12, 12, 12));
+        waitingPanel.setBorder(new EmptyBorder(10, 12, 10, 12));
         var waitingLabels = Theme.transparent(new GridLayout(0, 1, 0, 4));
         for (var label : new JLabel[] {waitingTitle, waitingBet, waitingCount}) {
             label.setHorizontalAlignment(SwingConstants.CENTER);
@@ -116,19 +116,21 @@ public final class GamePanel extends JPanel {
         squeezeBtn.addActionListener(e -> openCardSqueeze());
 
         fold.setPreferredSize(new Dimension(90, 40));
-        call.setPreferredSize(new Dimension(110, 40));
+        call.setPreferredSize(new Dimension(154, 40));
         allIn.setPreferredSize(new Dimension(95, 40));
-        raiseTo.setPreferredSize(new Dimension(85, 40));
         Theme.field(raiseTo);
+        raiseTo.setPreferredSize(new Dimension(112, 40));
+        raiseTo.getAccessibleContext().setAccessibleName("Tổng điểm muốn tố đến");
+        raiseTo.setToolTipText("Tổng điểm bạn muốn góp trong ván, dùng dấu chấm cho phần thập phân");
         raiseTo.addActionListener(e -> {
             if (raise.isEnabled()) raise.doClick();
         });
         raise.setPreferredSize(new Dimension(95, 40));
 
-        for (var component : new JComponent[] {fold, call, allIn, raiseTo, raise}) {
+        for (var component : new JComponent[] {fold, call, raiseTo, raise, allIn}) {
             bettingBar.add(component);
         }
-        actionCenterStack.add(bettingBar);
+        actionCenterStack.add(bettingBar, BorderLayout.NORTH);
 
         quickBetsPanel.add(Theme.label("Tố nhanh:", 11, Theme.MUTED));
         for (var b : new Theme.Button[] {betPlus1, betPlus2, betHalfPot, betPot, betMax}) {
@@ -148,7 +150,7 @@ public final class GamePanel extends JPanel {
         betPot.addActionListener(e -> applyQuickBetPotFraction(1.0));
         betMax.addActionListener(e -> applyQuickBetMax());
 
-        actionCenterStack.add(quickBetsPanel);
+        actionCenterStack.add(quickBetsPanel, BorderLayout.SOUTH);
         actionBar.add(actionCenterStack, BorderLayout.CENTER);
         add(actionBar, BorderLayout.SOUTH);
 
@@ -164,19 +166,22 @@ public final class GamePanel extends JPanel {
     public void setWaitingControls(JButton ready, JButton start) {
         this.hostReadyButton = ready;
         waitingActions.removeAll();
-        waitingActions.add(ready);
-        waitingActions.add(start);
+        var buttons = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        buttons.add(ready);
+        buttons.add(start);
+        waitingActions.add(buttons, BorderLayout.CENTER);
 
         autoReadyCheck.setFont(Theme.font(12, false));
         autoReadyCheck.setForeground(Theme.TEXT);
         autoReadyCheck.setOpaque(false);
-        autoReadyCheck.setFocusPainted(false);
+        autoReadyCheck.setFocusPainted(true);
         autoReadyCheck.setVisible(true);
         autoReadyCheck.addActionListener(e -> {
             PREFS.putBoolean("auto_ready", autoReadyCheck.isSelected());
             checkAutoReady();
         });
-        waitingActions.add(autoReadyCheck);
+        autoReadyCheck.setHorizontalAlignment(SwingConstants.CENTER);
+        waitingActions.add(autoReadyCheck, BorderLayout.SOUTH);
         waitingActions.revalidate();
     }
 
@@ -386,9 +391,11 @@ public final class GamePanel extends JPanel {
             }
         } else {
             if (room != null && room.countdownSeconds() > 0) {
-                text = "⏳ Tự động bắt đầu ván mới sau " + room.countdownSeconds() + " giây... (Chủ bàn có thể bấm Bắt đầu ngay)";
-            } else if (room != null && room.players().size() < 2) {
+                text = "Ván mới bắt đầu sau " + room.countdownSeconds() + " giây.";
+            } else if (room != null && room.players().stream().filter(p -> "PLAYING".equals(p.status())).count() < room.minPlayers()) {
                 text = "Mời thêm một người vào bàn để bắt đầu.";
+            } else if (room != null && room.players().stream().filter(p -> "PLAYING".equals(p.status())).anyMatch(p -> !p.ready())) {
+                text = "Bấm Sẵn sàng khi bạn muốn vào ván.";
             } else {
                 text = "Tất cả đã sẵn sàng. Chờ bắt đầu ván mới.";
             }
@@ -399,6 +406,7 @@ public final class GamePanel extends JPanel {
         }
 
         boolean inRound = roundId != null && result == null;
+        actionBar.setPreferredSize(new Dimension(0, inRound ? 134 : 42));
         actionCenterStack.setVisible(inRound);
         eye.setVisible(inRound && mine != null);
         squeezeBtn.setVisible(inRound && mine != null);
@@ -421,7 +429,7 @@ public final class GamePanel extends JPanel {
                 waitingTitle.setText("BẠN ĐANG XEM");
                 waitingTitle.setForeground(Theme.MUTED);
             } else if (room.countdownSeconds() > 0) {
-                waitingTitle.setText("⏳ VÁN MỚI BẮT ĐẦU SAU " + room.countdownSeconds() + " GIÂY");
+                waitingTitle.setText("VÁN MỚI SAU " + room.countdownSeconds() + " GIÂY");
                 waitingTitle.setForeground(Theme.GOLD);
             } else if (me != null && me.ready()) {
                 waitingTitle.setText("BẠN ĐÃ SẴN SÀNG");
@@ -446,6 +454,8 @@ public final class GamePanel extends JPanel {
         }
 
         status.setText(text);
+        status.setToolTipText(text);
+        call.setToolTipText(due.signum() == 0 ? "Kiểm tra: không cần góp thêm điểm" : "Theo " + Theme.points(due.min(mine.myBalance())) + " điểm");
         status.setForeground(turn ? Theme.GOLD : Theme.MUTED);
         revalidate();
         repaint();

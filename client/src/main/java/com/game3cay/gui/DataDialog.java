@@ -5,7 +5,6 @@ import com.game3cay.shared.model.HandType;
 import com.game3cay.shared.model.LeaderboardItem;
 import com.game3cay.shared.model.PageResult;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
@@ -41,6 +40,7 @@ public final class DataDialog extends JDialog {
     };
 
     private final JLabel status = Theme.label("Đang tải…", 13, Theme.MUTED);
+    private final PlainTable table = new PlainTable(rows);
     private final JLabel description = Theme.label("", 13, Theme.MUTED);
     private final Theme.Button previous = new Theme.Button("← Trước", "plain");
     private final Theme.Button next = new Theme.Button("Sau →", "plain");
@@ -59,38 +59,29 @@ public final class DataDialog extends JDialog {
         panel.setBorder(new EmptyBorder(25, 27, 22, 27));
 
         var head = Theme.transparent(new GridLayout(0, 1, 0, 7));
-        var heading = Theme.label(title, 27, Theme.GOLD);
+        var heading = Theme.label(title, 27, Theme.TEXT);
         heading.setFont(Theme.font(27, true));
         head.add(heading);
         head.add(description);
         panel.add(head, BorderLayout.NORTH);
 
-        var table = new PlainTable(rows);
-        table.setRowHeight(39);
-        table.setBackground(Theme.PANEL);
-        table.setForeground(Theme.TEXT);
-        table.setFont(Theme.font(14, false));
-        table.setGridColor(new Color(25, 42, 68));
-        table.setSelectionBackground(new Color(24, 48, 82));
-        table.setSelectionForeground(Theme.GOLD);
-        table.setShowVerticalLines(false);
-        table.getTableHeader().setBackground(new Color(18, 34, 58));
-        table.getTableHeader().setForeground(Theme.GOLD);
-        table.getTableHeader().setFont(Theme.font(12, true));
-        table.getTableHeader().setPreferredSize(new Dimension(200, 38));
-        table.getTableHeader().setReorderingAllowed(false);
+        Theme.table(table);
+        table.emptyText("Đang tải dữ liệu…");
 
         var scroll = new JScrollPane(table);
+        scroll.setColumnHeaderView(table.getTableHeader());
         scroll.getViewport().setBackground(Theme.PANEL);
-        scroll.setBorder(BorderFactory.createLineBorder(new Color(45, 68, 100)));
+        scroll.setBorder(BorderFactory.createLineBorder(Theme.LINE));
         panel.add(scroll, BorderLayout.CENTER);
 
         var bottom = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 12, 0));
-        bottom.add(status);
         bottom.add(previous);
         bottom.add(next);
         bottom.add(refresh);
-        panel.add(bottom, BorderLayout.SOUTH);
+        var footer = Theme.transparent(new BorderLayout(16, 0));
+        footer.add(status, BorderLayout.CENTER);
+        footer.add(bottom, BorderLayout.EAST);
+        panel.add(footer, BorderLayout.SOUTH);
 
         previous.addActionListener(e -> load(page - 1));
         next.addActionListener(e -> load(page + 1));
@@ -127,6 +118,7 @@ public final class DataDialog extends JDialog {
         this.page = result.page();
         this.totalPages = result.totalPages();
         this.loading = false;
+        table.emptyText(history ? "Bạn chưa có ván đã chơi" : "Chưa có kết quả xếp hạng");
         description.setText(history
                 ? "Các ván đã chơi và điểm thay đổi của bạn."
                 : "Xếp theo tổng điểm thắng trong các ván đã chơi.");
@@ -135,6 +127,8 @@ public final class DataDialog extends JDialog {
                 ? new String[] {"Thời gian", "Bàn", "Kết quả", "Bài", "Điểm +/−", "Người chơi"}
                 : new String[] {"Hạng", "Người chơi", "Điểm thắng", "Thắng", "Đã chơi", "Thua"});
         rows.setRowCount(0);
+        int[] widths = history ? new int[]{160, 120, 100, 120, 130, 100} : new int[]{70, 240, 170, 100, 100, 100};
+        for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
 
         for (var item : result.items()) {
             if (item instanceof GameHistoryItem g) {

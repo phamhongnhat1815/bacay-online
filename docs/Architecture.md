@@ -1,6 +1,6 @@
 # Kiến trúc Ba Cây Online
 
-Bốn module Maven dùng Java 21. shared chứa model Serializable, evaluator thuần và protocol v3; server chứa room/game/JDBC; client và admin là hai ứng dụng Swing độc lập. Đầu vào không được tin cậy chỉ vì được gửi từ ứng dụng chính thức.
+Bốn module Maven dùng Java 21. shared chứa model Serializable, evaluator thuần và protocol v4; server chứa room/game/JDBC; client và admin là hai ứng dụng Swing độc lập. Đầu vào không được tin cậy chỉ vì được gửi từ ứng dụng chính thức.
 
 Bộ thư viện chạy ứng dụng giữ như ban đầu. JDBC dùng DriverManager và MySQL Connector/J; TLS/JSSE, JUL, Semaphore và executor đều có sẵn trong JDK. Các thay đổi bảo mật giao thức không yêu cầu thêm framework hoặc thư viện runtime.
 

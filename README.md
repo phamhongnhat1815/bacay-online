@@ -2,7 +2,7 @@
 
 Ứng dụng nhiều người chơi dùng Java 21, Swing, TCP/TLS và MySQL 8.0.16 trở lên. Maven có bốn module: `shared` (DTO, luật bài thuần, protocol), `server` (ván bài/JDBC), `client` (người chơi) và `admin` (quản trị).
 
-Các bản sửa giữ bộ thư viện chạy ứng dụng như ban đầu: JDBC dùng `DriverManager` và MySQL Connector/J; TLS/JSSE, logging JUL và giới hạn đồng thời dùng sẵn trong JDK. Không thêm thư viện connection pool hoặc logging bên ngoài. Packet v3 là thay đổi giao thức để kiểm tra kích thước trước khi deserialize; vẫn cần cập nhật đồng bộ các ứng dụng.
+Các bản sửa giữ bộ thư viện chạy ứng dụng như ban đầu: JDBC dùng `DriverManager` và MySQL Connector/J; TLS/JSSE, logging JUL và giới hạn đồng thời dùng sẵn trong JDK. Không thêm thư viện connection pool hoặc logging bên ngoài. Packet v4 bổ sung xin/cho điểm trên giao thức có giới hạn kích thước; cần cập nhật đồng bộ server, client và admin.
 
 ## Cài đặt và chạy trên Windows
 
@@ -53,6 +53,12 @@ Script PowerShell ưu tiên tham số được truyền rõ ràng, sau đó bi�
 Các giới hạn kết nối, heartbeat và lượt chơi có trong `server.properties`; Java system property cùng tên ghi đè giá trị resource. Không lưu thông tin xác thực hay khóa TLS vào Git.
 
 ## Luật và độ bền dữ liệu
+
+Sảnh chơi hỗ trợ tìm số bàn, lọc bàn trống/người đang chờ và **Chơi ngay**. Bố cục tự đổi số cột theo cửa sổ. Thanh đầu có Xếp hạng, Lịch sử ván và Xin / Cho điểm; **•••** mở Luật chơi, Âm thanh và Đăng xuất. Trong bàn, trò chuyện và Điểm bạn bè nằm ở hai khối riêng. Giao diện vẫn dùng Java Swing/Java2D, không bổ sung thư viện.
+
+Trong bàn chờ, dùng **Xin điểm / Cho điểm** để chọn một người cùng bàn, nhập số điểm và lời nhắn. Nút **Xin / Cho điểm** ở thanh phiên mở hộp thư và lịch sử: người được xin có thể cho điểm hoặc từ chối; người xin được hủy. Yêu cầu tự hết hạn sau 2 phút. Khi cho điểm thành công, hai người phải sẵn sàng lại.
+
+Mặc định người cho cần hoàn tất ít nhất 3 ván, tối đa 2.000 điểm/lần và tổng 2.000 điểm trong 24 giờ; mỗi người gửi tối đa 3 yêu cầu/phút, mỗi cặp chỉ có một yêu cầu đang chờ. Các giá trị gift.* trong server.properties có thể ghi đè bằng Java system properties. Đây là giới hạn giảm lạm dụng điểm tặng tài khoản mới, không phải cơ chế chống tạo tài khoản phụ hoàn toàn. Xem [chi tiết xin/cho điểm](docs/Point_Transfers.md).
 
 Xếp hạng Sáp > Liêng > Bồ đội > Điểm. Liêng cùng cấp so chất lá cao nhất; A-2-3 dùng lá 3, Q-K-A dùng lá A. Điểm được tính tổng modulo 10, nên 0 là 0 điểm. Xem `Game_Rules.md`.
 

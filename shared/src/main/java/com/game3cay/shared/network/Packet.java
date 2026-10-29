@@ -9,7 +9,7 @@ public final class Packet implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
 
     private final int protocolVersion;
     private final PacketType type;

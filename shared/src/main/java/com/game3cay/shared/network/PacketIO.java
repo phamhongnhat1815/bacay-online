@@ -312,11 +312,56 @@ public final class PacketIO {
             case ADMIN_LEDGER_PAGE_RESP -> data instanceof PageResult<?> p
                     && p.items() != null
                     && p.items().stream().allMatch(AdminLedgerItem.class::isInstance);
+
+            case POINT_TRANSFER -> data instanceof PointTransferRequest r
+                    && isUuid(r.operationId()) && r.recipientId() > 0
+                    && isValidAmount(r.amount()) && isOptionalText(r.message(), 120);
+            case POINT_REQUEST_CREATE -> data instanceof PointRequestCreate r
+                    && isUuid(r.operationId()) && r.targetUserId() > 0
+                    && isValidAmount(r.amount()) && isOptionalText(r.message(), 120);
+            case POINT_REQUEST_REPLY -> data instanceof PointRequestReply r
+                    && isUuid(r.operationId()) && isUuid(r.requestId()) && r.decision() != null;
+            case POINT_REQUEST_LIST, POINT_TRANSFER_HISTORY -> data instanceof PageRequest p
+                    && p.page() >= 0 && p.page() <= 1_000_000 && p.pageSize() >= 1 && p.pageSize() <= 100;
+            case POINT_TRANSFER_RESULT -> data instanceof PointTransferReceipt r && validTransfer(r);
+            case POINT_REQUEST_UPDATED -> data instanceof PointRequestItem r && validPointRequest(r);
+            case POINT_REQUEST_LIST_RESULT -> data instanceof PageResult<?> p
+                    && p.items() != null && p.items().size() <= 100
+                    && p.items().stream().allMatch(item -> item instanceof PointRequestItem r && validPointRequest(r));
+            case POINT_TRANSFER_HISTORY_RESULT -> data instanceof PageResult<?> p
+                    && p.items() != null && p.items().size() <= 100
+                    && p.items().stream().allMatch(item -> item instanceof PointTransferReceipt r && validTransfer(r));
+            case BALANCE_UPDATED -> data instanceof PointBalanceUpdate b && b.userId() > 0
+                    && isUuid(b.transferId()) && b.balance() != null && b.balance().signum() >= 0
+                    && b.balance().precision() <= 15 && b.balance().scale() >= 0 && b.balance().scale() <= 2;
         };
 
         if (!valid) {
             throw new IOException("Payload không hợp lệ cho loại thông điệp: " + packet.getType());
         }
+    }
+
+    private static boolean isUuid(String id) {
+        if (id == null || id.length() != 36) return false;
+        try { return java.util.UUID.fromString(id).toString().equalsIgnoreCase(id); }
+        catch (IllegalArgumentException e) { return false; }
+    }
+
+    private static boolean validTransfer(PointTransferReceipt r) {
+        return isUuid(r.transferId()) && isUuid(r.operationId())
+                && (r.requestId() == null || isUuid(r.requestId()))
+                && r.senderId() > 0 && r.recipientId() > 0 && r.senderId() != r.recipientId()
+                && isNonEmptyText(r.senderName(), 100) && isNonEmptyText(r.recipientName(), 100)
+                && isValidAmount(r.amount()) && isOptionalText(r.message(), 120) && r.committedAtMillis() > 0;
+    }
+
+    private static boolean validPointRequest(PointRequestItem r) {
+        return isUuid(r.requestId()) && r.requesterId() > 0 && r.targetUserId() > 0
+                && r.requesterId() != r.targetUserId() && r.roomId() > 0
+                && isNonEmptyText(r.requesterName(), 100) && isNonEmptyText(r.targetName(), 100)
+                && isValidAmount(r.amount()) && isOptionalText(r.message(), 120) && r.status() != null
+                && r.createdAtMillis() > 0 && r.expiresAtMillis() > r.createdAtMillis()
+                && (r.status() == PointRequestStatus.FULFILLED ? isUuid(r.transferId()) : r.transferId() == null);
     }
 
     private static boolean isValidChatEvent(RoomChatEvent event) {

@@ -4,6 +4,9 @@ import com.game3cay.gui.DataDialog;
 
 import com.game3cay.gui.MainFrame;
 import com.game3cay.gui.Sound;
+import com.game3cay.gui.PointAmountDialog;
+import com.game3cay.gui.PointExchangeDialog;
+import com.game3cay.gui.PointUiRules;
 import com.game3cay.network.PacketListener;
 import com.game3cay.network.SocketClient;
 import com.game3cay.shared.model.AuthRequest;
@@ -25,6 +28,14 @@ import com.game3cay.shared.model.RoomChatEvent;
 import com.game3cay.shared.model.RoomSnapshot;
 import com.game3cay.shared.model.RoomSummary;
 import com.game3cay.shared.model.RoundResult;
+import com.game3cay.shared.model.PointTransferRequest;
+import com.game3cay.shared.model.PointRequestCreate;
+import com.game3cay.shared.model.PointRequestReply;
+import com.game3cay.shared.model.PointRequestDecision;
+import com.game3cay.shared.model.PointRequestItem;
+import com.game3cay.shared.model.PointRequestStatus;
+import com.game3cay.shared.model.PointTransferReceipt;
+import com.game3cay.shared.model.PointBalanceUpdate;
 import com.game3cay.shared.network.ErrorCode;
 import com.game3cay.shared.network.Packet;
 import com.game3cay.shared.network.PacketType;
@@ -58,6 +69,17 @@ public final class ConnectionController implements PacketListener {
     private long lastProfileRefreshTime;
     private DataDialog dataDialog;
     private final List<RoomChatEvent> pendingRoomChatEvents = new ArrayList<>();
+    private PointExchangeDialog pointsDialog;
+    private PointOperationJournal pointJournal;
+    private PointOperationJournal.Operation pendingPointOperation;
+    private boolean pointRecoveryPaused;
+    private String pointJournalFailure;
+    private Integer pointRequestsPage;
+    private Integer pointHistoryPage;
+    private boolean pointProfileRefresh;
+    private final java.util.LinkedHashMap<String, PointRequestItem> pointRequests = new java.util.LinkedHashMap<>();
+    private final java.util.LinkedHashSet<String> seenPointTransfers = new java.util.LinkedHashSet<>();
+    private java.util.Set<Long> ignoredPointUsers = new java.util.HashSet<>();
 
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
     private final Timer reconnectTimer;
@@ -124,6 +146,10 @@ public final class ConnectionController implements PacketListener {
         view.room().onReady(this::toggleReadyState);
         view.room().onChangeBet(amount -> sendRequest(PacketType.CHANGE_ROOM_BET, amount));
         view.room().onStart(() -> sendRequest(PacketType.START_GAME_REQUEST, null));
+        view.room().onAskPoints(() -> composePointOperation(false));
+        view.room().onGivePoints(() -> composePointOperation(true));
+        view.room().onPointRequests(this::openPointsDialog);
+        view.onPointRequests(this::openPointsDialog);
 
         view.room().onSend(() -> {
             String text = view.room().messageText();
@@ -170,6 +196,7 @@ public final class ConnectionController implements PacketListener {
                 pendingNewPassword = null;
             }
             view.dispose();
+            if (pointsDialog != null) pointsDialog.dispose();
         });
     }
 
@@ -328,6 +355,8 @@ public final class ConnectionController implements PacketListener {
     }
 
     private void performMaintenance() {
+        refreshPointBadge();
+        if (drainPointWork()) return;
         if (currentUser == null || pendingRequest != null || currentRoom != null || reconnectState.active()) {
             return;
         }
@@ -369,6 +398,222 @@ public final class ConnectionController implements PacketListener {
 
         dataDialog.setVisible(true);
         sendRequest(isHistory ? PacketType.GET_HISTORY : PacketType.GET_LEADERBOARD, new PageRequest(0, 20));
+    }
+
+    private static boolean isPointWrite(PacketType type) {
+        return type == PacketType.POINT_TRANSFER || type == PacketType.POINT_REQUEST_CREATE || type == PacketType.POINT_REQUEST_REPLY;
+    }
+
+    private static boolean isPointRead(PacketType type) {
+        return type == PacketType.POINT_REQUEST_LIST || type == PacketType.POINT_TRANSFER_HISTORY;
+    }
+
+    private void composePointOperation(boolean giving) {
+        if (currentUser == null || pendingRequest != null || reconnectState.active()) return;
+        if (pendingPointOperation != null || pointJournalFailure != null) {
+            openPointsDialog();
+            view.showMessage("Còn giao dịch điểm đang chờ xác minh. Hãy kiểm tra trước khi tạo giao dịch mới.");
+            return;
+        }
+        if (currentRoom == null || !"WAITING".equals(currentRoom.status())) {
+            view.showMessage("Xin/cho điểm khi đang cùng bàn chờ.");
+            return;
+        }
+        PointAmountDialog.show(view, currentRoom, currentUser.userId(), view.balanceValue(), giving).ifPresent(entry -> {
+            String operation = java.util.UUID.randomUUID().toString();
+            Object payload = giving ? new PointTransferRequest(operation, entry.recipientId(), entry.amount(), entry.message())
+                    : new PointRequestCreate(operation, entry.recipientId(), entry.amount(), entry.message());
+            submitPointOperation(new PointOperationJournal.Operation(giving ? PacketType.POINT_TRANSFER : PacketType.POINT_REQUEST_CREATE, payload));
+        });
+    }
+
+    private void submitPointOperation(PointOperationJournal.Operation operation) {
+        if (currentUser == null || pointJournal == null || pendingRequest != null || reconnectState.active()) return;
+        if (pendingPointOperation != null || pointJournalFailure != null) {
+            view.showMessage("Cần xác minh giao dịch trước đó trước khi tiếp tục.");
+            return;
+        }
+        try {
+            pointJournal.save(operation);
+            pendingPointOperation = operation;
+            pointRecoveryPaused = false;
+            drainPointWork();
+        } catch (IllegalStateException e) {
+            pointJournalFailure = e.getMessage();
+            view.showMessage(e.getMessage());
+        }
+    }
+
+    private void replyPointRequest(PointRequestItem item, PointRequestDecision decision) {
+        if (currentUser == null) return;
+        if (decision == PointRequestDecision.ACCEPT
+                && !PointUiRules.canAccept(item, currentUser.userId(), currentRoom, System.currentTimeMillis(), ignoredPointUsers.contains(item.requesterId()))) {
+            if (pointsDialog != null) pointsDialog.message("Hai người cần ở cùng bàn chờ và yêu cầu phải còn hạn.");
+            return;
+        }
+        submitPointOperation(new PointOperationJournal.Operation(PacketType.POINT_REQUEST_REPLY,
+                new PointRequestReply(java.util.UUID.randomUUID().toString(), item.requestId(), decision)));
+    }
+
+    private void openPointsDialog() {
+        if (currentUser == null) return;
+        if (pointsDialog == null || !pointsDialog.isDisplayable()) {
+            pointsDialog = new PointExchangeDialog(view);
+            pointsDialog.onReply(this::replyPointRequest);
+            pointsDialog.onRequestLoad(page -> { pointRequestsPage = Math.max(0, page); drainPointWork(); });
+            pointsDialog.onHistoryLoad(page -> { pointHistoryPage = Math.max(0, page); drainPointWork(); });
+            pointsDialog.onBlock(userId -> {
+                if (ignoredPointUsers.contains(userId)) ignoredPointUsers.remove(userId);
+                else if (ignoredPointUsers.size() < 200) ignoredPointUsers.add(userId);
+                if (pointJournal != null) pointJournal.ignoredUsers(ignoredPointUsers);
+                pointDialogContext();
+                refreshPointBadge();
+            });
+            pointsDialog.onRetry(() -> {
+                if (pointJournalFailure != null) restorePointOperations();
+                pointRecoveryPaused = false;
+                pointRequestsPage = 0;
+                pointHistoryPage = 0;
+                drainPointWork();
+            });
+        }
+        pointDialogContext();
+        updateUiOperationState();
+        pointsDialog.setVisible(true);
+        pointRequestsPage = 0;
+        pointHistoryPage = 0;
+        drainPointWork();
+    }
+
+    private void restorePointOperations() {
+        if (currentUser == null) return;
+        pointJournal = PointOperationJournal.forAccount(savedHost, savedPort, currentUser.userId());
+        pointRecoveryPaused = false;
+        pointJournalFailure = null;
+        try { pendingPointOperation = pointJournal.load().orElse(null); }
+        catch (IllegalStateException e) { pendingPointOperation = null; pointJournalFailure = e.getMessage(); view.showMessage(e.getMessage()); }
+        ignoredPointUsers = pointJournal.ignoredUsers();
+        pointRequestsPage = 0;
+        if (pointsDialog != null && pointsDialog.isDisplayable()) pointHistoryPage = 0;
+        SwingUtilities.invokeLater(this::drainPointWork);
+    }
+
+    private void clearPointOperation() {
+        if (pointJournal != null) pointJournal.clear();
+        pendingPointOperation = null;
+        pointRecoveryPaused = false;
+        pointJournalFailure = null;
+    }
+
+    /** A single queue for point work respects the controller's existing one-pending-request invariant. */
+    private boolean drainPointWork() {
+        if (currentUser == null || pendingRequest != null || queuedAuthPacket != null || reconnectState.active()
+                || client == null || !client.isConnected() || isClosing || isExplicitLogout) return false;
+        if (pendingPointOperation != null && !pointRecoveryPaused) {
+            view.showMessage("Đang xác minh giao dịch điểm…");
+            dispatchPacket(Packet.request(pendingPointOperation.type(), pendingPointOperation.data()), false);
+            return true;
+        }
+        if (pointProfileRefresh) {
+            pointProfileRefresh = false;
+            sendRequest(PacketType.GET_PROFILE, null, true);
+            return true;
+        }
+        if (pointRequestsPage != null) {
+            int page = pointRequestsPage; pointRequestsPage = null;
+            sendRequest(PacketType.POINT_REQUEST_LIST, new PageRequest(page, 20), true);
+            return true;
+        }
+        if (pointHistoryPage != null) {
+            int page = pointHistoryPage; pointHistoryPage = null;
+            sendRequest(PacketType.POINT_TRANSFER_HISTORY, new PageRequest(page, 20), true);
+            return true;
+        }
+        return false;
+    }
+
+    private void pointDialogContext() {
+        if (pointsDialog != null && pointsDialog.isDisplayable() && currentUser != null) {
+            pointsDialog.context(currentUser.userId(), currentRoom, view.balanceValue(), ignoredPointUsers);
+            if (pointJournalFailure != null) pointsDialog.message(pointJournalFailure);
+            else if (pointRecoveryPaused) pointsDialog.message("Giao dịch chưa xác định kết quả. Dùng Xác minh lại; mã giao dịch được giữ nguyên.");
+        }
+    }
+
+    private void refreshPointBadge() {
+        if (currentUser == null) return;
+        long now = System.currentTimeMillis();
+        int count = (int) pointRequests.values().stream().filter(item -> item.targetUserId() == currentUser.userId()
+                && PointUiRules.pending(item, now) && !ignoredPointUsers.contains(item.requesterId())).count();
+        view.pointRequestCount(count);
+    }
+
+    private void mergePointRequest(PointRequestItem item) {
+        PointRequestItem previous = pointRequests.get(item.requestId());
+        if (PointUiRules.newest(previous, item) != item) return;
+        pointRequests.put(item.requestId(), item);
+        while (pointRequests.size() > 200) pointRequests.remove(pointRequests.keySet().iterator().next());
+        if (pointsDialog != null && pointsDialog.isDisplayable()) pointsDialog.updateRequest(item);
+        refreshPointBadge();
+    }
+
+    private void receivedPointTransfer(PointTransferReceipt receipt) {
+        if (currentUser == null || (receipt.senderId() != currentUser.userId() && receipt.recipientId() != currentUser.userId())) return;
+        if (pendingPointOperation != null && receipt.senderId() == currentUser.userId()
+                && pendingPointOperation.operationId().equals(receipt.operationId())) clearPointOperation();
+        if (seenPointTransfers.add(receipt.transferId())) {
+            while (seenPointTransfers.size() > 200) seenPointTransfers.remove(seenPointTransfers.iterator().next());
+            view.showMessage(receipt.senderId() == currentUser.userId()
+                    ? "Đã cho " + receipt.recipientName() + " " + com.game3cay.gui.Theme.points(receipt.amount()) + " điểm."
+                    : "Bạn nhận " + com.game3cay.gui.Theme.points(receipt.amount()) + " điểm từ " + receipt.senderName() + ".");
+        }
+        pointRequestsPage = 0;
+        if (pointsDialog != null && pointsDialog.isDisplayable()) pointHistoryPage = 0;
+        pointProfileRefresh = true;
+        updateUiOperationState();
+    }
+
+    private boolean handlePointPacket(Packet packet) {
+        PacketType type = packet.getType();
+        if (type != PacketType.BALANCE_UPDATED && type != PacketType.POINT_REQUEST_UPDATED
+                && type != PacketType.POINT_TRANSFER_RESULT && type != PacketType.POINT_REQUEST_LIST_RESULT
+                && type != PacketType.POINT_TRANSFER_HISTORY_RESULT) return false;
+        if (currentUser == null) return true;
+        boolean push = packet.getRequestId() == null;
+        boolean matching = pendingRequest != null && pendingRequest.id().equals(packet.getRequestId());
+        if (!push && !matching) return true;
+        PacketType requestType = matching ? pendingRequest.type() : null;
+        if (type == PacketType.BALANCE_UPDATED && packet.getData() instanceof PointBalanceUpdate balance) {
+            if (balance.userId() == currentUser.userId()) { view.setBalance(balance.balance()); pointDialogContext(); }
+        } else if (type == PacketType.POINT_REQUEST_UPDATED && packet.getData() instanceof PointRequestItem item) {
+            if (item.requesterId() != currentUser.userId() && item.targetUserId() != currentUser.userId()) return true;
+            mergePointRequest(item);
+            if (matching) {
+                if (requestType == PacketType.POINT_REQUEST_CREATE || requestType == PacketType.POINT_REQUEST_REPLY) clearPointOperation();
+                completePendingRequest();
+                pointRequestsPage = 0;
+                view.showMessage(requestType == PacketType.POINT_REQUEST_CREATE ? "Đã gửi yêu cầu xin điểm." : "Đã cập nhật yêu cầu điểm.");
+            } else if (item.targetUserId() == currentUser.userId() && PointUiRules.pending(item, System.currentTimeMillis())
+                    && !ignoredPointUsers.contains(item.requesterId())) {
+                view.showMessage(item.requesterName() + " xin bạn " + com.game3cay.gui.Theme.points(item.amount()) + " điểm. Mở Yêu cầu điểm để xem.");
+            }
+        } else if (type == PacketType.POINT_TRANSFER_RESULT && packet.getData() instanceof PointTransferReceipt receipt) {
+            if (matching) completePendingRequest();
+            receivedPointTransfer(receipt);
+        } else if (type == PacketType.POINT_REQUEST_LIST_RESULT && matching && packet.getData() instanceof PageResult<?> result) {
+            java.util.List<PointRequestItem> items = result.items().stream().map(PointRequestItem.class::cast).toList();
+            for (PointRequestItem item : items) mergePointRequest(item);
+            java.util.List<PointRequestItem> currentItems = items.stream().map(item -> pointRequests.getOrDefault(item.requestId(), item)).toList();
+            if (pointsDialog != null && pointsDialog.isDisplayable()) pointsDialog.requests(new PageResult<>(currentItems, result.page(), result.pageSize(), result.totalItems(), result.totalPages()));
+            completePendingRequest();
+        } else if (type == PacketType.POINT_TRANSFER_HISTORY_RESULT && matching && packet.getData() instanceof PageResult<?> result) {
+            java.util.List<PointTransferReceipt> items = result.items().stream().map(PointTransferReceipt.class::cast).toList();
+            if (pendingPointOperation != null) items.stream().filter(receipt -> receipt.senderId() == currentUser.userId()
+                    && pendingPointOperation.operationId().equals(receipt.operationId())).findFirst().ifPresent(this::receivedPointTransfer);
+            if (pointsDialog != null && pointsDialog.isDisplayable()) pointsDialog.history(new PageResult<>(items, result.page(), result.pageSize(), result.totalItems(), result.totalPages()));
+            completePendingRequest();
+        }
+        return true;
     }
 
     @Override
@@ -486,6 +731,8 @@ public final class ConnectionController implements PacketListener {
         String requestId = packet.getRequestId();
         Object data = packet.getData();
 
+        if (handlePointPacket(packet)) return;
+
         if (type == PacketType.PING || type == PacketType.SERVER_NOTICE) {
             return;
         }
@@ -588,6 +835,17 @@ public final class ConnectionController implements PacketListener {
         if (type == PacketType.ERROR) {
             completePendingRequest();
             var errorPayload = (Packet.ErrorPayload) data;
+            if (isPointWrite(activeRequest.type())) {
+                boolean ambiguous = errorPayload.code() == ErrorCode.INTERNAL_ERROR
+                        || errorPayload.code() == ErrorCode.RATE_LIMIT_EXCEEDED
+                        || errorPayload.code() == ErrorCode.UNAUTHENTICATED;
+                if (ambiguous) pointRecoveryPaused = true;
+                else clearPointOperation();
+                if (pointsDialog != null && pointsDialog.isDisplayable()) pointsDialog.message(errorPayload.message());
+                updateUiOperationState();
+            } else if (isPointRead(activeRequest.type()) && pointsDialog != null && pointsDialog.isDisplayable()) {
+                pointsDialog.message(errorPayload.message());
+            }
             afterRegisterLogin = null;
             if (pendingNewPassword != null) {
                 Arrays.fill(pendingNewPassword, '\0');
@@ -604,7 +862,7 @@ public final class ConnectionController implements PacketListener {
                 resetSignedOutState();
             }
             if ((errorPayload.code() == ErrorCode.NOT_IN_ROOM || errorPayload.code() == ErrorCode.ROOM_NOT_FOUND)
-                    && currentRoom != null) {
+                    && currentRoom != null && !isPointWrite(activeRequest.type())) {
                 currentRoom = null;
                 savedRoomId = 0;
                 view.showLobby();
@@ -669,6 +927,7 @@ public final class ConnectionController implements PacketListener {
             String displayName = (authResult.displayName() == null) ? authResult.username() : authResult.displayName();
             view.showSignedIn(displayName, authResult.userId());
             view.setBalance(authResult.balance());
+            restorePointOperations();
 
             if (reconnectState.active()) {
                 reconnectState.finish();
@@ -738,7 +997,10 @@ public final class ConnectionController implements PacketListener {
             view.showSignedIn(profileResult.displayName(), profileResult.userId());
             if (currentRoom == null) {
                 view.setBalance(profileResult.balance());
+            } else if (activeRequest.silent() && "WAITING".equals(currentRoom.status())) {
+                view.setBalance(profileResult.balance());
             }
+            pointDialogContext();
 
             if (activeRequest.type() == PacketType.GET_PROFILE && !activeRequest.silent()) {
                 view.editProfile(profileResult, currentRoom == null, req -> sendRequest(PacketType.UPDATE_PROFILE, req));
@@ -853,10 +1115,14 @@ public final class ConnectionController implements PacketListener {
         pendingRequest = null;
         requestTimeoutTimer.stop();
         updateUiOperationState();
+        SwingUtilities.invokeLater(this::drainPointWork);
     }
 
     private void updateUiOperationState() {
-        view.setOperationEnabled(queuedAuthPacket == null && pendingRequest == null && !reconnectState.active());
+        boolean enabled = queuedAuthPacket == null && pendingRequest == null && !reconnectState.active();
+        view.setOperationEnabled(enabled);
+        if (pointsDialog != null && pointsDialog.isDisplayable()) pointsDialog.busy(!enabled, pendingPointOperation != null || pointJournalFailure != null);
+        pointDialogContext();
     }
 
     private void resetSignedOutState() {
@@ -876,6 +1142,17 @@ public final class ConnectionController implements PacketListener {
         reconnectTimer.stop();
         pendingRoomChatEvents.clear();
         afterRegisterLogin = null;
+        pointJournal = null;
+        pendingPointOperation = null;
+        pointRecoveryPaused = false;
+        pointJournalFailure = null;
+        pointRequestsPage = null;
+        pointHistoryPage = null;
+        pointProfileRefresh = false;
+        pointRequests.clear();
+        seenPointTransfers.clear();
+        ignoredPointUsers.clear();
+        if (pointsDialog != null) { pointsDialog.dispose(); pointsDialog = null; }
 
         if (dataDialog != null) {
             dataDialog.dispose();

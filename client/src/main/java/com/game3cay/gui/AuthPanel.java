@@ -8,6 +8,8 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
@@ -41,13 +43,13 @@ public final class AuthPanel extends JPanel {
         setLayout(null);
         setBackground(Theme.BG);
 
-        formContainer.setBorder(new EmptyBorder(28, 32, 26, 32));
+        formContainer.setBorder(new EmptyBorder(24, 28, 24, 28));
 
         var tabsPanel = Theme.transparent(new GridLayout(1, 2, 10, 0));
         tabsPanel.add(loginTab);
         tabsPanel.add(registerTab);
 
-        var topHeader = Theme.transparent(new BorderLayout(0, 22));
+        var topHeader = Theme.transparent(new BorderLayout(0, 16));
         topHeader.add(tabsPanel, BorderLayout.NORTH);
         topHeader.add(captionLabel, BorderLayout.CENTER);
         formContainer.add(topHeader, BorderLayout.NORTH);
@@ -61,7 +63,7 @@ public final class AuthPanel extends JPanel {
         optionalFields.add(createFieldRow("TÊN HIỂN THỊ · TÙY CHỌN", name));
         optionalFields.add(createFieldRow("EMAIL · TÙY CHỌN", email));
         extraFieldsPanel.add(optionalFields);
-        extraFieldsPanel.setPreferredSize(new Dimension(360, 144));
+        extraFieldsPanel.setPreferredSize(new Dimension(360, 138));
 
         var fieldsStack = Theme.transparent(new BorderLayout(0, 12));
         fieldsStack.add(basicFields, BorderLayout.NORTH);
@@ -69,8 +71,14 @@ public final class AuthPanel extends JPanel {
 
         var middlePanel = Theme.transparent(new BorderLayout());
         middlePanel.add(fieldsStack, BorderLayout.NORTH);
-        basicFields.setPreferredSize(new Dimension(360, 144));
-        formContainer.add(middlePanel, BorderLayout.CENTER);
+        basicFields.setPreferredSize(new Dimension(360, 138));
+        var fieldsScroll = new JScrollPane(middlePanel);
+        fieldsScroll.setBorder(null);
+        fieldsScroll.setOpaque(false);
+        fieldsScroll.getViewport().setOpaque(false);
+        fieldsScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        fieldsScroll.getVerticalScrollBar().setUnitIncrement(20);
+        formContainer.add(fieldsScroll, BorderLayout.CENTER);
 
         messageArea.setEditable(false);
         messageArea.setFocusable(false);
@@ -92,6 +100,11 @@ public final class AuthPanel extends JPanel {
         for (var f : new JTextField[]{username, password, confirm, name, email}) {
             Theme.field(f);
         }
+        username.getAccessibleContext().setAccessibleName("Tài khoản");
+        password.getAccessibleContext().setAccessibleName("Mật khẩu");
+        confirm.getAccessibleContext().setAccessibleName("Nhập lại mật khẩu");
+        name.getAccessibleContext().setAccessibleName("Tên hiển thị, tùy chọn");
+        email.getAccessibleContext().setAccessibleName("Email, tùy chọn");
         password.setToolTipText("Mật khẩu đăng ký từ 8 đến 128 ký tự");
 
         loginTab.addActionListener(e -> switchMode(false));
@@ -101,7 +114,9 @@ public final class AuthPanel extends JPanel {
 
     private static JPanel createFieldRow(String labelText, JTextField fieldComponent) {
         var rowPanel = Theme.transparent(new BorderLayout(0, 7));
-        rowPanel.add(Theme.label(labelText, 11, Theme.MUTED), BorderLayout.NORTH);
+        var label = Theme.label(labelText, 11, Theme.MUTED);
+        label.setLabelFor(fieldComponent);
+        rowPanel.add(label, BorderLayout.NORTH);
         rowPanel.add(fieldComponent, BorderLayout.CENTER);
         rowPanel.setPreferredSize(new Dimension(170, 66));
         return rowPanel;
@@ -115,7 +130,7 @@ public final class AuthPanel extends JPanel {
 
         captionLabel.setText(isRegister ? "Một tài khoản, những cuộc vui" : "Chào mừng bạn trở lại");
         captionLabel.setFont(Theme.font(isRegister ? 20 : 23, true));
-        submitButton.setText(isRegister ? "TẠO TÀI KHOẢN · 1.000 ĐIỂM" : "VÀO SẢNH CHƠI");
+        submitButton.setText(isRegister ? "Tạo tài khoản · Nhận 1.000 điểm" : "Đăng nhập vào sảnh →");
 
         loginTab.putClientProperty("active", !isRegister);
         registerTab.putClientProperty("active", isRegister);
@@ -129,9 +144,9 @@ public final class AuthPanel extends JPanel {
     @Override
     public void doLayout() {
         int formWidth = Math.min(450, getWidth() - 64);
-        int formHeight = isRegisterMode ? 660 : 480;
-        int posX = (getWidth() < 1050) ? (getWidth() - formWidth) / 2 : getWidth() - formWidth - 100;
-        int posY = Math.max(18, (getHeight() - formHeight) / 2);
+        int formHeight = Math.min(isRegisterMode ? 620 : 474, Math.max(320, getHeight() - 100));
+        int posX = (getWidth() < 1050) ? (getWidth() - formWidth) / 2 : getWidth() - formWidth - 64;
+        int posY = Math.max(68, (getHeight() - formHeight) / 2);
 
         formContainer.setBounds(posX, posY, formWidth, formHeight);
         settingsButton.setBounds(getWidth() - 138, 20, 110, 38);
@@ -143,19 +158,22 @@ public final class AuthPanel extends JPanel {
         Graphics2D g = (Graphics2D) gg.create();
         Assets.quality(g);
 
-        Assets.cover(g, Assets.get("backgrounds/auth.png", 1700), getWidth(), getHeight());
-        g.setColor(new Color(4, 10, 22, 90));
+        g.setPaint(new java.awt.GradientPaint(0, 0, new Color(24, 44, 65), getWidth(), getHeight(), Theme.BG));
         g.fillRect(0, 0, getWidth(), getHeight());
+        g.setColor(new Color(Theme.GOLD.getRed(), Theme.GOLD.getGreen(), Theme.GOLD.getBlue(), 6));
+        g.fillOval(-160, -250, 850, 850);
+        g.setColor(new Color(255, 255, 255, 6));
+        g.drawOval(-100, -190, 730, 730);
 
         if (getWidth() >= 1050) {
-            int startX = 85;
+            int startX = 64;
             int startY = Math.max(115, getHeight() / 2 - 190);
 
             g.setColor(Theme.GOLD);
             g.setFont(Theme.font(14, true));
             g.drawString("CÙNG BẠN BÈ · CÙNG MỘT BÀN", startX, startY);
 
-            g.setFont(Theme.font(78, true));
+            g.setFont(Theme.font(68, true));
             g.drawString("BA CÂY", startX, startY + 89);
 
             g.setColor(Theme.TEXT);
@@ -164,7 +182,7 @@ public final class AuthPanel extends JPanel {
 
             g.setColor(Theme.MUTED);
             g.setFont(Theme.font(14, false));
-            g.drawString("Chọn bàn, sẵn sàng và bắt đầu ván mới.", startX, startY + 165);
+            g.drawString("01  Chọn bàn     02  Sẵn sàng     03  Vào ván", startX, startY + 165);
 
             Card[] decorativeCards = {
                     new Card(Rank.ACE, Suit.BICH),
@@ -252,6 +270,6 @@ public final class AuthPanel extends JPanel {
         }) {
             comp.setEnabled(!busy);
         }
-        submitButton.setText(busy ? "ĐANG XỬ LÝ…" : isRegisterMode ? "TẠO TÀI KHOẢN · 1.000 ĐIỂM" : "VÀO SẢNH CHƠI");
+        submitButton.setText(busy ? "Đang kết nối…" : isRegisterMode ? "Tạo tài khoản · Nhận 1.000 điểm" : "Đăng nhập vào sảnh →");
     }
 }

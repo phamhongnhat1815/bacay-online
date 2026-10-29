@@ -8,6 +8,12 @@ import com.game3cay.server.game.DefaultGameEngine;
 import com.game3cay.server.game.CompletedRound;
 import com.game3cay.server.game.RoundParticipant;
 import com.game3cay.shared.model.BetAction;
+import com.game3cay.shared.model.PointTransferRequest;
+import com.game3cay.shared.model.PointRequestCreate;
+import com.game3cay.shared.model.PointRequestReply;
+import com.game3cay.shared.model.PointRequestDecision;
+import com.game3cay.shared.model.PointRequestStatus;
+import com.game3cay.shared.model.PageRequest;
 import com.game3cay.shared.security.PasswordUtil;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -105,6 +111,53 @@ class MySqlSchemaTest {
                 users.adjustBalanceForAdmin(adminId, legacy, BigDecimal.ONE, "MySQL integration");
                 assertEquals(3, users.getLedgerForAdmin(0, 20).totalItems());
                 assertEquals(2, games.getLeaderboard(0, 20).totalItems());
+                try (var connection = connections.open(); var statement = connection.createStatement()) {
+                    statement.execute("UPDATE users SET total_games=3 WHERE role='USER'");
+                }
+                var points = new JdbcPointTransferBUS(connections);
+                var gift = new PointTransferRequest(UUID.randomUUID().toString(), other, new BigDecimal("25.00"), "MySQL gift");
+                var transferred = points.transfer(legacy, gift, 1);
+                assertTrue(transferred.created());
+                assertFalse(points.transfer(legacy, gift, 1).created());
+                var requested = points.createRequest(legacy,
+                        new PointRequestCreate(UUID.randomUUID().toString(), other, new BigDecimal("5.00"), "MySQL request"), 1);
+                var reply = new PointRequestReply(UUID.randomUUID().toString(), requested.requestId(), PointRequestDecision.ACCEPT);
+                assertTrue(points.reply(other, reply).transfer().created());
+                assertFalse(points.reply(other, reply).transfer().created());
+                assertEquals(PointRequestStatus.FULFILLED, points.getRequest(legacy, requested.requestId()).status());
+                assertEquals(2, points.history(legacy, new PageRequest(0, 20)).totalItems());
+                assertEquals(7, users.getLedgerForAdmin(0, 20).totalItems());
+                var racingRequest = points.createRequest(legacy,
+                        new PointRequestCreate(UUID.randomUUID().toString(), other, new BigDecimal("60.00"), "MySQL race"), 1);
+                BigDecimal totalBefore = users.getProfile(legacy).balance().add(users.getProfile(other).balance());
+                try (var workers = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                    var start = new java.util.concurrent.CountDownLatch(1);
+                    var accept = workers.submit(() -> {
+                        start.await();
+                        try {
+                            points.reply(other, new PointRequestReply(UUID.randomUUID().toString(), racingRequest.requestId(), PointRequestDecision.ACCEPT));
+                            return true;
+                        } catch (BUSException e) {
+                            assertEquals(com.game3cay.shared.network.ErrorCode.INVALID_STATE, e.getErrorCode());
+                            return false;
+                        }
+                    });
+                    var cancel = workers.submit(() -> {
+                        start.await();
+                        try {
+                            points.reply(legacy, new PointRequestReply(UUID.randomUUID().toString(), racingRequest.requestId(), PointRequestDecision.CANCEL));
+                            return true;
+                        } catch (BUSException e) {
+                            assertEquals(com.game3cay.shared.network.ErrorCode.INVALID_STATE, e.getErrorCode());
+                            return false;
+                        }
+                    });
+                    start.countDown();
+                    assertNotEquals(accept.get(10, java.util.concurrent.TimeUnit.SECONDS), cancel.get(10, java.util.concurrent.TimeUnit.SECONDS));
+                }
+                assertEquals(totalBefore, users.getProfile(legacy).balance().add(users.getProfile(other).balance()));
+                var finalState = points.getRequest(legacy, racingRequest.requestId()).status();
+                assertTrue(finalState == PointRequestStatus.FULFILLED || finalState == PointRequestStatus.CANCELLED);
             } finally {
                 try (var statement = admin.createStatement()) { statement.execute("DROP DATABASE " + database); }
             }

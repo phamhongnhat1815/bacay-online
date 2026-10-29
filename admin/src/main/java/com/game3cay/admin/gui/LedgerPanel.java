@@ -31,7 +31,7 @@ public final class LedgerPanel extends JPanel {
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private final DefaultTableModel tableModel = new DefaultTableModel(
-            new String[] {"Mã Ván / Giao Dịch", "ID User", "Tên Đăng Nhập", "Biến Động Điểm", "Số Dư Trước GD", "Số Dư Sau GD", "Thời Điểm Ghi Nhận", "Loại GD", "Admin", "Lý Do"},
+            new String[] {"Mã Ván / Giao Dịch", "ID User", "Tên Đăng Nhập", "Biến Động Điểm", "Số Dư Trước GD", "Số Dư Sau GD", "Thời Điểm Ghi Nhận", "Loại GD", "Người thực hiện", "Lý Do"},
             0
     ) {
         @Serial
@@ -63,7 +63,7 @@ public final class LedgerPanel extends JPanel {
         JPanel topBar = AdminTheme.transparent(new BorderLayout());
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         titlePanel.add(AdminTheme.label("SỔ CÁI KIỂM TOÁN TÀI CHÍNH", 20, AdminTheme.GOLD, true));
-        titlePanel.add(AdminTheme.label("Lưu vết toàn bộ biến động điểm số từ kết quả ván bài và can thiệp của Quản trị viên", 12, AdminTheme.MUTED));
+        titlePanel.add(AdminTheme.label("Lưu vết kết quả ván bài, điều chỉnh admin và điểm người chơi cho nhau", 12, AdminTheme.MUTED));
         topBar.add(titlePanel, BorderLayout.WEST);
 
         JPanel actions = AdminTheme.transparent(new FlowLayout(FlowLayout.RIGHT, 10, 0));

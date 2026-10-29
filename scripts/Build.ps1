@@ -31,5 +31,8 @@ try {
     Copy-Item .\database\setup.sql (Join-Path $dist 'database') -Force
     Copy-Item .\scripts\Start-Server.ps1,.\scripts\Start-Client.cmd,.\scripts\Start-Server.cmd,.\scripts\Start-Admin.cmd $dist -Force
     Copy-Item .\README.md,.\Game_Rules.md $dist -Force
+    $distDocs = Join-Path $dist 'docs'
+    New-Item -ItemType Directory -Force $distDocs | Out-Null
+    Copy-Item .\docs\Architecture.md,.\docs\Protocol.md,.\docs\Database.md,.\docs\Screen_Data_Mapping.md,.\docs\Point_Transfers.md $distDocs -Force
     Write-Host 'BUILD OK. Mo Start-Server.cmd / Start-Client.cmd / Start-Admin.cmd de su dung.'
 } finally { Pop-Location }

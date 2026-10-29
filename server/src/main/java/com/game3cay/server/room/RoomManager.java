@@ -3,6 +3,7 @@ package com.game3cay.server.room;
 import com.game3cay.server.bus.BUSException;
 import com.game3cay.server.bus.UserBUS;
 import com.game3cay.server.bus.UserDTO;
+import com.game3cay.server.bus.PointTransferOutcome;
 import com.game3cay.server.game.CompletedRound;
 import com.game3cay.server.game.DefaultGameEngine;
 import com.game3cay.server.game.GameEngine;
@@ -23,6 +24,9 @@ import com.game3cay.shared.model.GameStartInfo;
 import com.game3cay.shared.model.Hand;
 import com.game3cay.shared.model.JoinRoomRequest;
 import com.game3cay.shared.model.PlayAgainPrompt;
+import com.game3cay.shared.model.PointBalanceUpdate;
+import com.game3cay.shared.model.PointRequestItem;
+import com.game3cay.shared.model.PointTransferReceipt;
 import com.game3cay.shared.model.RoomChatEvent;
 import com.game3cay.shared.model.RoomSnapshot;
 import com.game3cay.shared.model.RoomSummary;
@@ -84,6 +88,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
         UserDTO user;
         final int seat;
         boolean ready;
+        long balanceRevision;
 
         Member(UserDTO user, int seat) {
             this.user = user;
@@ -144,6 +149,122 @@ public final class RoomManager implements RoomService, AutoCloseable {
         return membership.containsKey(userId);
     }
 
+    @FunctionalInterface
+    public interface PointTransferWork {
+        PointTransferOutcome execute(long roomId) throws BUSException;
+    }
+
+    /** Validates the relationship at the moment an operation is authorized. */
+    public synchronized long sharedWaitingRoom(long actorId, long otherId) throws BUSException {
+        if (actorId <= 0 || otherId <= 0 || actorId == otherId) {
+            throw fail(ErrorCode.INVALID_REQUEST, "Cần chọn một người chơi khác để xin hoặc cho điểm");
+        }
+        Room room = requireUserRoom(actorId);
+        if (!Objects.equals(membership.get(otherId), room.id) || !room.members.containsKey(otherId)) {
+            throw fail(ErrorCode.NOT_IN_ROOM, "Hai người chơi phải ở cùng bàn chờ");
+        }
+        if (!"WAITING".equals(room.state) || room.roundId != null || room.journaling || room.autoStartQueued) {
+            throw fail(ErrorCode.INVALID_STATE, "Chỉ được xin hoặc cho điểm khi bàn đang chờ");
+        }
+        for (long id : List.of(actorId, otherId)) {
+            Member member = room.members.get(id);
+            if (member == null || !"USER".equalsIgnoreCase(member.user.role())
+                    || !"ACTIVE".equalsIgnoreCase(member.user.status())) {
+                throw fail(ErrorCode.FORBIDDEN, "Chỉ người chơi có tài khoản hoạt động được xin hoặc cho điểm");
+            }
+            ensureNoPendingResult(id);
+            if (startingUsers.contains(id)) {
+                throw fail(ErrorCode.INVALID_STATE, "Người chơi đang bắt đầu ván; vui lòng thử lại sau");
+            }
+        }
+        return room.id;
+    }
+
+    /** Reserves both balances before JDBC, without holding the room monitor during DB I/O. */
+    public PointTransferReceipt transferPoints(long senderId, long recipientId, long expectedRoomId,
+                                               PointTransferWork work) throws BUSException {
+        Objects.requireNonNull(work, "work không được null");
+        if (expectedRoomId < 0) throw fail(ErrorCode.INVALID_REQUEST, "Mã bàn không hợp lệ");
+        boolean reserved = false;
+        Set<Long> affectedRooms = new HashSet<>();
+        try {
+            long roomId;
+            synchronized (this) {
+                roomId = sharedWaitingRoom(senderId, recipientId);
+                if (expectedRoomId > 0 && expectedRoomId != roomId) {
+                    throw fail(ErrorCode.INVALID_STATE, "Yêu cầu thuộc bàn khác; hai người cần trở lại đúng bàn chờ");
+                }
+                adjustingUsers.add(senderId);
+                adjustingUsers.add(recipientId);
+                reserved = true;
+                affectedRooms.add(roomId);
+                Room room = rooms.get(roomId);
+                room.autoStartDeadlineNanos = 0;
+                room.version++;
+                notifyRoomUpdated(room);
+            }
+
+            PointTransferOutcome outcome = Objects.requireNonNull(work.execute(roomId), "Kết quả chuyển điểm không được null");
+            PointTransferReceipt receipt = Objects.requireNonNull(outcome.receipt(), "Biên nhận không được null");
+            if (receipt.senderId() != senderId || receipt.recipientId() != recipientId) {
+                throw new IllegalStateException("Biên nhận chuyển điểm không khớp người tham gia");
+            }
+            if (outcome.created()) {
+                synchronized (this) {
+                    applyPointBalance(senderId, outcome.senderBalance(), affectedRooms);
+                    applyPointBalance(recipientId, outcome.recipientBalance(), affectedRooms);
+                    // Queue the private balances before releasing reservations; a later game snapshot
+                    // or another transfer must not overtake this committed balance on either socket.
+                    sendPrivatePacket(senderId, PacketType.BALANCE_UPDATED,
+                            new PointBalanceUpdate(senderId, outcome.senderBalance(), receipt.transferId()));
+                    sendPrivatePacket(recipientId, PacketType.BALANCE_UPDATED,
+                            new PointBalanceUpdate(recipientId, outcome.recipientBalance(), receipt.transferId()));
+                }
+            }
+            return receipt;
+        } finally {
+            if (reserved) {
+                synchronized (this) {
+                    adjustingUsers.remove(senderId);
+                    adjustingUsers.remove(recipientId);
+                    Long senderRoom = membership.get(senderId);
+                    Long recipientRoom = membership.get(recipientId);
+                    if (senderRoom != null) affectedRooms.add(senderRoom);
+                    if (recipientRoom != null) affectedRooms.add(recipientRoom);
+                    for (long roomId : affectedRooms) {
+                        Room room = rooms.get(roomId);
+                        if (room != null) {
+                            checkAndStartAutoCountdown(room);
+                            room.version++;
+                            notifyRoomUpdated(room);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void applyPointBalance(long userId, BigDecimal balance, Set<Long> affectedRooms) {
+        if (balance == null || balance.signum() < 0) throw new IllegalStateException("Số dư chuyển điểm không hợp lệ");
+        Long roomId = membership.get(userId);
+        if (roomId == null) return; // Disconnect/leave may complete while the authorized DB transaction runs.
+        Room room = rooms.get(roomId);
+        Member member = room == null ? null : room.members.get(userId);
+        if (member == null) return;
+        UserDTO user = member.user;
+        member.user = new UserDTO(user.userId(), user.username(), user.displayName(), user.email(),
+                user.avatarUrl(), balance, user.status(), user.role(), user.totalGames(), user.totalWins(), user.totalLosses());
+        member.balanceRevision++;
+        member.ready = false;
+        affectedRooms.add(roomId);
+    }
+
+    public synchronized void notifyPointRequest(PointRequestItem item) {
+        Objects.requireNonNull(item, "item không được null");
+        events.packet(Packet.serverPush(PacketType.POINT_REQUEST_UPDATED, item),
+                List.of(item.requesterId(), item.targetUserId()));
+    }
+
     private void ensureNoPendingResult(long userId) throws BUSException {
         if (adjustingUsers.contains(userId)) {
             throw fail(ErrorCode.INVALID_STATE, "Số dư đang được điều chỉnh; vui lòng thử lại");
@@ -179,6 +300,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
                     Member member = room.members.get(targetUserId);
                     if (member != null) {
                         member.user = fresh;
+                        member.balanceRevision++;
                         member.ready = false;
                         room.version++;
                         checkAndStartAutoCountdown(room);
@@ -222,7 +344,11 @@ public final class RoomManager implements RoomService, AutoCloseable {
             Room room = rooms.get(request.roomId());
             if (room != null && room.members.containsKey(actor.userId())) {
                 Member m = room.members.get(actor.userId());
-                m.user = actor;
+                // Rejoin metadata may have been fetched before another handler committed a transfer.
+                // The member balance is maintained by the room's committed balance operations.
+                m.user = new UserDTO(actor.userId(), actor.username(), actor.displayName(), actor.email(),
+                        actor.avatarUrl(), m.user.balance(), actor.status(), actor.role(),
+                        actor.totalGames(), actor.totalWins(), actor.totalLosses());
                 sendSystemChat(room, actor.displayName() + " đã khôi phục kết nối vào bàn.");
                 notifyRoomUpdated(room);
 
@@ -363,8 +489,12 @@ public final class RoomManager implements RoomService, AutoCloseable {
 
     @Override
     public RoomSnapshot setReady(long userId, boolean ready) throws BUSException {
+        Member capturedMember;
+        long capturedBalanceRevision;
         synchronized (this) {
             ensureNoPendingResult(userId);
+            capturedMember = requireUserRoom(userId).members.get(userId);
+            capturedBalanceRevision = capturedMember.balanceRevision;
         }
         UserDTO freshUser = (users == null) ? null : users.getProfile(userId);
 
@@ -376,6 +506,9 @@ public final class RoomManager implements RoomService, AutoCloseable {
             ensureNoPendingResult(userId);
 
             Member member = room.members.get(userId);
+            if (member != capturedMember || member.balanceRevision != capturedBalanceRevision) {
+                throw fail(ErrorCode.INVALID_STATE, "Số dư vừa thay đổi; vui lòng xác nhận sẵn sàng lại");
+            }
             if (freshUser != null) {
                 member.user = freshUser;
             }
@@ -508,6 +641,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
 
                 for (Member m : room.members.values()) {
                     m.user = freshUsers.get(m.user.userId());
+                    m.balanceRevision++;
                 }
 
                 checkStart(userId);
@@ -661,6 +795,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
                         m.user = new UserDTO(u.userId(), u.username(), u.displayName(), u.email(),
                                 u.avatarUrl(), balance, u.status(), u.role(), u.totalGames(),
                                 u.totalWins(), u.totalLosses());
+                        m.balanceRevision++;
                     } catch (GameEngineException e) {
                         throw new IllegalStateException(e);
                     }
@@ -694,6 +829,9 @@ public final class RoomManager implements RoomService, AutoCloseable {
     }
 
     private boolean canAutoStart(Room room) {
+        if (room.members.keySet().stream().anyMatch(id -> startingUsers.contains(id) || adjustingUsers.contains(id))) {
+            return false;
+        }
         List<Member> eligible = room.members.values().stream()
                 .filter(m -> m.user.balance().compareTo(room.settings.betAmount()) >= 0).toList();
         return eligible.size() >= room.settings.minPlayers() && eligible.stream().allMatch(m -> {

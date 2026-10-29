@@ -112,13 +112,12 @@ public final class GameTablePanel extends JPanel {
             return;
         }
         double scale = Math.min((double) getWidth() / BASE_WIDTH, (double) getHeight() / BASE_HEIGHT);
-        int ox = (int) ((getWidth() - BASE_WIDTH * scale) / 2);
         int oy = (int) ((getHeight() - BASE_HEIGHT * scale) / 2);
-        waitingOverlay.setBounds(
-                ox + (int) (300 * scale),
-                oy + (int) (255 * scale),
-                (int) (500 * scale),
-                (int) (220 * scale));
+        // Swing child fonts and buttons do not scale with the painted table.
+        int width = Math.min(getWidth() - 24, Math.max(450, (int) (500 * scale)));
+        int height = Math.min(getHeight() - 16, 172);
+        waitingOverlay.setBounds((getWidth() - width) / 2,
+                Math.max(8, oy + (int) (365 * scale) - height / 2), width, height);
     }
 
     @Override
@@ -267,7 +266,13 @@ public final class GameTablePanel extends JPanel {
             return;
         }
 
-        drawCenter(g);
+        Graphics2D centerGraphics = (Graphics2D) g.create();
+        double centerScale = Math.max(1, 0.82 / scale);
+        centerGraphics.translate(550, 370);
+        centerGraphics.scale(centerScale, centerScale);
+        centerGraphics.translate(-550, -370);
+        drawCenter(centerGraphics);
+        centerGraphics.dispose();
 
         long now = System.nanoTime();
         boolean anyFlying = false;
@@ -296,10 +301,15 @@ public final class GameTablePanel extends JPanel {
             double angle = Math.PI / 2 + 2 * Math.PI * slot / 8;
             int x = (int) (550 + 445 * Math.cos(angle));
             int y = (int) (365 + 242 * Math.sin(angle));
-            drawSeat(g, p, seat, x, y);
-            if (p != null) {
-                drawHand(g, p, angle);
-            }
+            if (p != null) drawHand(g, p, angle);
+            // Keep seat names legible even when the painted table is scaled down.
+            Graphics2D seatGraphics = (Graphics2D) g.create();
+            double seatScale = Math.max(1, 0.82 / scale);
+            seatGraphics.translate(x, y);
+            seatGraphics.scale(seatScale, seatScale);
+            seatGraphics.translate(-x, -y);
+            drawSeat(seatGraphics, p, seat, x, y);
+            seatGraphics.dispose();
         }
 
         g.dispose();
@@ -328,7 +338,7 @@ public final class GameTablePanel extends JPanel {
             g.drawRoundRect(420, 339, 260, 76, 30, 30);
             g.drawImage(Assets.get("chips.png", 110), 436, 352, 65, 46, null);
 
-            g.setFont(Theme.font(10, true));
+            g.setFont(Theme.font(12, true));
             center(g, "TỔNG ĐIỂM TRÊN BÀN", 580, 360, Theme.MUTED);
             g.setFont(Theme.font(26, true));
             center(g, Theme.points(bets.mainPot()), 580, 391, Theme.GOLD);
@@ -437,7 +447,7 @@ public final class GameTablePanel extends JPanel {
                 .findFirst()
                 .orElse(null);
 
-        String sub = "PLAYING".equals(room.status()) ? "Đang chơi" : p.ready() ? "✓ Sẵn sàng" : "Chờ sẵn sàng";
+        String sub = "PLAYING".equals(room.status()) ? "Đang chơi" : p.ready() ? "Sẵn sàng" : "Chờ sẵn sàng";
         Color color = p.ready() ? Theme.GREEN : Theme.MUTED;
 
         if ("SPECTATOR".equals(p.status())) {
@@ -457,13 +467,13 @@ public final class GameTablePanel extends JPanel {
         }
 
         if (result != null && "WAITING".equals(room.status()) && p.ready()) {
-            sub = "✓ Sẵn sàng";
+            sub = "Sẵn sàng";
             color = Theme.GREEN;
         }
 
         g.setFont(Theme.font(12, false));
         g.setColor(color);
-        g.drawString(sub, left + 65, top + 46);
+        g.drawString(shorten(g, sub, 99), left + 65, top + 46);
 
         if (room.ownerUserId() == p.userId()) {
             g.drawImage(Assets.get("icons/crown.png", 30), left + w - 19, top - 11, 25, 25, null);

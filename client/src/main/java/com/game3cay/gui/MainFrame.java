@@ -22,8 +22,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.prefs.Preferences;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -54,10 +52,12 @@ public final class MainFrame extends JFrame {
 
     private final Theme.Button profile = new Theme.Button("Hồ sơ", "plain");
     private final Theme.Button history = new Theme.Button("Lịch sử", "plain");
-    private final Theme.Button leaderboard = new Theme.Button("Bảng xếp hạng", "gold");
+    private final Theme.Button leaderboard = new Theme.Button("Xếp hạng", "plain");
     private final Theme.Button logout = new Theme.Button("Đăng xuất", "plain");
     private final Theme.Button sound = new Theme.Button("Âm thanh: Bật", "plain");
     private final Theme.Button help = new Theme.Button("Luật chơi", "plain");
+    private final Theme.Button pointRequests = new Theme.Button("Xin / Cho điểm", "plain");
+    private BigDecimal balanceValue = BigDecimal.ZERO;
 
     private final Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
     private String host = System.getProperty(
@@ -84,48 +84,14 @@ public final class MainFrame extends JFrame {
                 super.paintComponent(gg);
                 var g = (Graphics2D) gg.create();
                 Assets.quality(g);
-                Assets.cover(g, Assets.get("backgrounds/casino.png", 1700), getWidth(), getHeight());
-                g.setColor(new Color(6, 14, 25, 175));
+                g.setPaint(new java.awt.GradientPaint(0, 0, Theme.BG, getWidth(), getHeight(), new Color(17, 29, 45)));
                 g.fillRect(0, 0, getWidth(), getHeight());
                 g.dispose();
             }
         };
         session.setOpaque(true);
 
-        var header = new JPanel(new BorderLayout(15, 0));
-        header.setBackground(new Color(8, 18, 32));
-        header.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(150, 125, 65)),
-                new EmptyBorder(16, 28, 16, 28)));
-
-        var brand = Theme.transparent(new GridLayout(0, 1, 0, 2));
-        var logo = Theme.label("♠  BA CÂY", 25, Theme.GOLD);
-        logo.setFont(Theme.font(25, true));
-        brand.add(logo);
-        brand.add(Theme.label("ONLINE  /  CHƠI CÙNG BẠN BÈ", 9, Theme.MUTED));
-        header.add(brand, BorderLayout.WEST);
-
-        var info = Theme.transparent(new GridLayout(0, 1, 0, 3));
-        info.add(account);
-
-        var wallet = Theme.transparent(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        balance.setFont(Theme.font(23, true));
-        wallet.add(balance);
-        wallet.add(Theme.label("  điểm", 12, Theme.MUTED));
-        info.add(wallet);
-        info.setPreferredSize(new Dimension(145, 54));
-
-        var actions = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        actions.add(info);
-        actions.add(Box.createHorizontalStrut(13));
-        for (var b : new JButton[] {leaderboard, history, profile, help, sound, logout}) {
-            b.setFont(Theme.font(13, true));
-            b.setBorder(new EmptyBorder(8, 7, 8, 7));
-            int width = (b == leaderboard) ? 140 : (b == sound) ? 92 : (b == logout) ? 100 : (b == help) ? 85 : 78;
-            b.setPreferredSize(new Dimension(width, 42));
-            actions.add(b);
-        }
-        header.add(actions, BorderLayout.EAST);
+        var header = new SessionHeader(account, balance, leaderboard, history, pointRequests, profile, help, sound, logout);
         session.add(header, BorderLayout.NORTH);
 
         body.add(lobby, "LOBBY");
@@ -135,7 +101,6 @@ public final class MainFrame extends JFrame {
         var footer = Theme.transparent(new BorderLayout());
         footer.setBorder(new EmptyBorder(6, 28, 8, 28));
         footer.add(message, BorderLayout.CENTER);
-        footer.add(Theme.label("BA CÂY ONLINE", 10, Theme.MUTED), BorderLayout.EAST);
         session.add(footer, BorderLayout.SOUTH);
 
         root.add(auth, "AUTH");
@@ -268,6 +233,12 @@ public final class MainFrame extends JFrame {
         leaderboard.addActionListener(e -> r.run());
     }
 
+    public void onPointRequests(Runnable action) { pointRequests.addActionListener(e -> action.run()); }
+    public void pointRequestCount(int count) {
+        pointRequests.setText(count == 0 ? "Xin / Cho điểm" : "Yêu cầu điểm (" + count + ")");
+        room.pointRequestCount(count);
+    }
+
     public void onChangePassword(Consumer<ChangePasswordRequest> action) {
         this.passwordAction = action;
     }
@@ -283,6 +254,8 @@ public final class MainFrame extends JFrame {
     public void showSignedOut() {
         this.signedIn = false;
         account.setText("");
+        pointRequestCount(0);
+        pointRequests.setEnabled(false);
         lobby.setRooms(List.of());
         room.clear();
         clearPasswords();
@@ -293,13 +266,18 @@ public final class MainFrame extends JFrame {
     public void showSignedIn(String name, long id) {
         this.signedIn = true;
         account.setText(name);
-        account.setToolTipText("Tài khoản #" + id);
+        account.setToolTipText(name + " · Tài khoản #" + id);
+        pointRequests.setEnabled(true);
         screens.show(root, "SESSION");
     }
 
     public void setBalance(BigDecimal value) {
-        balance.setText(Theme.points(value));
+        balanceValue = value == null ? BigDecimal.ZERO : value;
+        balance.setText(Theme.points(value) + " điểm");
+        balance.setToolTipText("Số dư: " + Theme.points(value) + " điểm");
     }
+
+    public BigDecimal balanceValue() { return balanceValue; }
 
     public void showLobby() {
         room.clear();

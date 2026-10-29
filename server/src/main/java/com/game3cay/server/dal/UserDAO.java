@@ -308,7 +308,13 @@ public final class UserDAO {
                 + "UNION ALL SELECT a.adjustment_id, a.target_user_id, u.username, a.delta, a.balance_before, "
                 + "a.balance_after, CAST(UNIX_TIMESTAMP(a.created_at) AS DECIMAL(20,0))*1000 AS ts, 'ADMIN', au.username, a.reason "
                 + "FROM admin_adjustments a JOIN users u ON a.target_user_id=u.id "
-                + "LEFT JOIN users au ON a.admin_user_id=au.id";
+                + "LEFT JOIN users au ON a.admin_user_id=au.id "
+                + "UNION ALL SELECT t.transfer_id,e.user_id,u.username,e.delta,e.balance_before,e.balance_after, "
+                + "t.committed_at AS ts,CASE WHEN e.delta<0 THEN 'GIFT_SENT' ELSE 'GIFT_RECEIVED' END,actor.username, "
+                + "CONCAT(CASE WHEN e.delta<0 THEN 'Cho ' ELSE 'Nhận từ ' END, "
+                + "CASE WHEN e.delta<0 THEN t.recipient_name ELSE t.sender_name END,': ',t.message) "
+                + "FROM point_transfer_entries e JOIN point_transfers t ON e.transfer_id=t.transfer_id "
+                + "JOIN users u ON e.user_id=u.id JOIN users actor ON t.sender_id=actor.id";
         try (Connection conn = connections.open()) {
             long totalItems;
             try (Statement stmt = conn.createStatement();

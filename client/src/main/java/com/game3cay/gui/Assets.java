@@ -24,14 +24,8 @@ public final class Assets {
 
     /** Called on the startup worker, before the first Swing paint. */
     public static void preload() {
-        get("backgrounds/auth.png", 1700);
-        get("backgrounds/casino.png", 1700);
-        for (String variant : new String[] {"blue", "gold", "green", "orange", "red", "disabled"}) {
-            get("buttons/" + variant + ".png", 420);
-        }
         get("dealer.png", 220);
         get("table.png", 1100);
-        get("table.png", 240);
         get("chips.png", 60);
         get("chips.png", 110);
         get("icons/crown.png", 30);

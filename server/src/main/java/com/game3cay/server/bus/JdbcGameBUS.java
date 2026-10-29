@@ -41,7 +41,7 @@ public final class JdbcGameBUS implements GameBUS {
     }
 
     public void checkSchema() throws SQLException {
-        Map<String, String> required = Map.of(
+        Map<String, String> required = new LinkedHashMap<>(Map.of(
                 "users", "id,username,password_hash,display_name,email,avatar_url,balance,status,role,total_games,total_wins,total_losses,created_at",
                 "play_rounds", "id,round_id,content_hash,runtime_room_id,room_name,ante,status,ended_at",
                 "play_results", "round_id,user_id,display_name,placement,outcome,profit,hand_type,score",
@@ -50,7 +50,10 @@ public final class JdbcGameBUS implements GameBUS {
                 "play_pots", "round_id,pot_no,amount",
                 "play_pot_players", "round_id,pot_no,user_id",
                 "play_ledger", "round_id,user_id,delta,balance_before,balance_after",
-                "admin_adjustments", "id,adjustment_id,admin_user_id,target_user_id,delta,balance_before,balance_after,reason,created_at");
+                "admin_adjustments", "id,adjustment_id,admin_user_id,target_user_id,delta,balance_before,balance_after,reason,created_at"));
+        required.put("point_requests", "request_id,operation_id,payload_hash,requester_id,requester_name,target_id,target_name,room_id,amount,message,status,created_at,expires_at,transfer_id");
+        required.put("point_transfers", "transfer_id,operation_id,payload_hash,request_id,room_id,sender_id,sender_name,recipient_id,recipient_name,amount,message,committed_at");
+        required.put("point_transfer_entries", "transfer_id,user_id,delta,balance_before,balance_after");
         try (Connection conn = connections.open()) {
             for (var table : required.entrySet()) {
                 try (Statement stmt = conn.createStatement();
@@ -61,6 +64,10 @@ public final class JdbcGameBUS implements GameBUS {
                 if (!migration.next()) throw new SQLException("Schema chưa cập nhật; hãy chạy database/setup.sql trước khi mở server");
             }
             roleColumn = true;
+            try (Statement stmt = conn.createStatement();
+                 ResultSet migration = stmt.executeQuery("SELECT name FROM app_migrations WHERE name='schema_v3_point_transfers'")) {
+                if (!migration.next()) throw new SQLException("Schema xin/cho điểm chưa cập nhật; hãy chạy database/setup.sql");
+            }
         }
     }
 
