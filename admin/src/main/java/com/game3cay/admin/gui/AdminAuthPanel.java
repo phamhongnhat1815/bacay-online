@@ -61,10 +61,7 @@ public final class AdminAuthPanel extends JPanel {
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 4));
         JLabel title = AdminTheme.label("♠ BA CÂY ADMIN", 26, AdminTheme.GOLD, true);
         title.setHorizontalAlignment(SwingConstants.CENTER);
-        JLabel subtitle = AdminTheme.label("BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN", 11, AdminTheme.MUTED);
-        subtitle.setHorizontalAlignment(SwingConstants.CENTER);
         titlePanel.add(title);
-        titlePanel.add(subtitle);
         centerCard.add(titlePanel, BorderLayout.NORTH);
 
         JPanel fields = new JPanel();
@@ -125,7 +122,7 @@ public final class AdminAuthPanel extends JPanel {
     }
 
     private void triggerLogin() {
-        if (onLoginCallback == null) {
+        if (onLoginCallback == null || !loginButton.isEnabled()) {
             return;
         }
 
@@ -177,5 +174,12 @@ public final class AdminAuthPanel extends JPanel {
 
     public void clearPassword() {
         passwordField.setText("");
+    }
+
+    public void reset() {
+        clearPassword();
+        messageLabel.setText(" ");
+        messageLabel.setForeground(AdminTheme.MUTED);
+        setBusy(false);
     }
 }

@@ -32,7 +32,6 @@ public final class RoomPanel extends JPanel {
     private final JTextPane chatPane = new JTextPane();
     private final JTextField contentField = new Theme.HintField("Nhập tin nhắn…");
     private final JLabel chatEmpty = Theme.label("Chưa có tin nhắn. Chào mọi người nhé!", 11, Theme.MUTED);
-    private final JLabel pointsHint = Theme.label("Dùng khi bàn đang chờ", 11, Theme.MUTED);
 
     private final JTextField betAmountField = new JTextField("10", 6);
     private final Theme.Button changeBetButton = new Theme.Button("Đổi cược", "plain");
@@ -42,9 +41,6 @@ public final class RoomPanel extends JPanel {
     private final Theme.Button readyButton = new Theme.Button("Chơi tiếp", "plain");
     private final Theme.Button startButton = new Theme.Button("Bắt đầu", "gold");
     private final Theme.Button leaveButton = new Theme.Button("← Sảnh chơi", "plain");
-    private final Theme.Button askPointsButton = new Theme.Button("Xin điểm", "plain");
-    private final Theme.Button givePointsButton = new Theme.Button("Cho điểm", "plain");
-    private final Theme.Button pointRequestsButton = new Theme.Button("Yêu cầu điểm", "plain");
 
     private final GamePanel gamePanel = new GamePanel();
     private RoomSnapshot roomSnapshot;
@@ -100,23 +96,6 @@ public final class RoomPanel extends JPanel {
         var chatHeader = Theme.label("Trò chuyện trong bàn", 15, Theme.TEXT);
         chatHeader.setFont(Theme.font(15, true));
         sidebarGlass.add(chatHeader, BorderLayout.NORTH);
-        var pointCard = new Theme.Glass(new BorderLayout(0, 9));
-        pointCard.setBorder(new EmptyBorder(16, 15, 16, 15));
-        var pointHeading = Theme.transparent(new GridLayout(0, 1, 0, 5));
-        var pointTitle = Theme.label("Điểm bạn bè", 15, Theme.TEXT);
-        pointTitle.setFont(Theme.font(15, true));
-        pointHeading.add(pointTitle);
-        pointHeading.add(pointsHint);
-        pointCard.add(pointHeading, BorderLayout.NORTH);
-        var pointActions = Theme.transparent(new GridLayout(1, 2, 6, 0));
-        askPointsButton.setPreferredSize(new Dimension(85, 36));
-        givePointsButton.setPreferredSize(new Dimension(85, 36));
-        pointActions.add(askPointsButton);
-        pointActions.add(givePointsButton);
-        pointCard.add(pointActions, BorderLayout.CENTER);
-        pointRequestsButton.setPreferredSize(new Dimension(180, 36));
-        pointCard.add(pointRequestsButton, BorderLayout.SOUTH);
-
         chatPane.setEditable(false);
         chatPane.setOpaque(false);
         chatPane.setFont(Theme.font(13, false));
@@ -142,11 +121,7 @@ public final class RoomPanel extends JPanel {
         chatInputArea.add(sendButton, BorderLayout.EAST);
 
         sidebarGlass.add(chatInputArea, BorderLayout.SOUTH);
-        var sidebar = Theme.transparent(new BorderLayout(0, 12));
-        sidebar.setPreferredSize(new Dimension(264, 500));
-        sidebar.add(sidebarGlass, BorderLayout.CENTER);
-        sidebar.add(pointCard, BorderLayout.SOUTH);
-        centralArea.add(sidebar, BorderLayout.EAST);
+        centralArea.add(sidebarGlass, BorderLayout.EAST);
         add(centralArea, BorderLayout.CENTER);
 
         clear();
@@ -191,11 +166,6 @@ public final class RoomPanel extends JPanel {
     public void onLeave(Runnable runnable) {
         leaveButton.addActionListener(e -> runnable.run());
     }
-
-    public void onAskPoints(Runnable action) { askPointsButton.addActionListener(e -> action.run()); }
-    public void onGivePoints(Runnable action) { givePointsButton.addActionListener(e -> action.run()); }
-    public void onPointRequests(Runnable action) { pointRequestsButton.addActionListener(e -> action.run()); }
-    public void pointRequestCount(int count) { pointRequestsButton.setText(count == 0 ? "Yêu cầu điểm" : "Yêu cầu điểm (" + count + ")"); }
 
     public void onSend(Runnable runnable) {
         sendButton.addActionListener(e -> runnable.run());
@@ -248,13 +218,6 @@ public final class RoomPanel extends JPanel {
         }
 
         boolean isWaiting = (roomSnapshot != null) && "WAITING".equals(roomSnapshot.status());
-        boolean hasPeer = roomSnapshot != null && roomSnapshot.players().stream().anyMatch(p -> p.userId() != currentUserId);
-        askPointsButton.setEnabled(areActionsEnabled && isWaiting && hasPeer);
-        givePointsButton.setEnabled(areActionsEnabled && isWaiting && hasPeer);
-        askPointsButton.setToolTipText(isWaiting ? "Xin điểm từ người cùng bàn" : "Xin/cho điểm trong bàn chờ");
-        givePointsButton.setToolTipText(isWaiting ? "Cho điểm cho người cùng bàn" : "Xin/cho điểm trong bàn chờ");
-        pointRequestsButton.setEnabled(roomSnapshot != null);
-        pointsHint.setText(!isWaiting ? "Khả dụng khi ván kết thúc" : hasPeer ? "Xin hoặc cho người cùng bàn" : "Chờ thêm người vào bàn");
         readyButton.putClientProperty("active", mySlot != null && !mySlot.ready());
         if (mySlot != null && mySlot.ready()) {
             readyButton.setText("Tạm nghỉ");
@@ -301,6 +264,16 @@ public final class RoomPanel extends JPanel {
         if (message == null || "SYSTEM".equalsIgnoreCase(message.type()) || message.senderId() == 0L) {
             return;
         }
+        appendMessage(message);
+    }
+
+    public void appendAnnouncement(ChatMessage message) {
+        if (message != null && "SYSTEM".equalsIgnoreCase(message.type())) {
+            appendMessage(message);
+        }
+    }
+
+    private void appendMessage(ChatMessage message) {
         StyledDocument doc = chatPane.getStyledDocument();
         chatEmpty.setVisible(false);
         try {

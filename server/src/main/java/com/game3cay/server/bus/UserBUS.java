@@ -21,7 +21,8 @@ public interface UserBUS {
 
     void updateUserStatusForAdmin(long userId, boolean blocked) throws BUSException;
 
-    void adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason) throws BUSException;
+    /** Returns the updated profile from the same transaction that commits the adjustment. */
+    UserDTO adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason) throws BUSException;
 
     AdminStatsSnapshot getSystemStatsForAdmin(long onlineUsers, int activeRooms) throws BUSException;
 

@@ -63,7 +63,6 @@ public final class LedgerPanel extends JPanel {
         JPanel topBar = AdminTheme.transparent(new BorderLayout());
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         titlePanel.add(AdminTheme.label("SỔ CÁI KIỂM TOÁN TÀI CHÍNH", 20, AdminTheme.GOLD, true));
-        titlePanel.add(AdminTheme.label("Lưu vết kết quả ván bài, điều chỉnh admin và điểm người chơi cho nhau", 12, AdminTheme.MUTED));
         topBar.add(titlePanel, BorderLayout.WEST);
 
         JPanel actions = AdminTheme.transparent(new FlowLayout(FlowLayout.RIGHT, 10, 0));

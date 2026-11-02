@@ -2,6 +2,8 @@ package com.game3cay.server.network;
 
 import com.game3cay.shared.network.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.io.*;
 import java.net.*;
 import java.time.Duration;
@@ -18,11 +20,16 @@ class NetworkRegressionTest {
         }
     }
 
-    @Test void rejectsUnknownVersionAndMagicBeforePayload() throws Exception {
+    @ParameterizedTest
+    @ValueSource(ints = {2, 3, 4, 99})
+    void rejectsIncompatibleVersionBeforePayload(int version) throws Exception {
         try (var pair = new Wire()) {
-            header(new DataOutputStream(pair.outgoing.getOutputStream()), 2, 1, 1);
+            header(new DataOutputStream(pair.outgoing.getOutputStream()), version, 1, 1);
             assertThrows(IOException.class, () -> PacketIO.read(pair.input));
         }
+    }
+
+    @Test void rejectsInvalidMagicBeforePayload() throws Exception {
         try (var pair = new Wire()) {
             pair.outgoing.getOutputStream().write(new byte[8]);
             assertThrows(IOException.class, () -> PacketIO.read(pair.input));

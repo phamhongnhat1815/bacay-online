@@ -1,7 +1,7 @@
 package com.game3cay.admin.controller;
 
 import com.game3cay.admin.gui.AdminAuthPanel;
-import com.game3cay.admin.gui.AdminMainFrame;
+import com.game3cay.admin.gui.AdminView;
 import com.game3cay.admin.gui.LiveRoomInspectorDialog;
 import com.game3cay.admin.network.AdminSocketClient;
 import com.game3cay.shared.model.AdminAdjustBalanceRequest;
@@ -18,27 +18,29 @@ import com.game3cay.shared.model.AuthRequest;
 import com.game3cay.shared.model.AuthResult;
 import com.game3cay.shared.model.PageRequest;
 import com.game3cay.shared.model.PageResult;
+import com.game3cay.shared.network.ErrorCode;
 import com.game3cay.shared.network.Packet;
 import com.game3cay.shared.network.PacketType;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
 public final class AdminController {
-    private final AdminMainFrame frame;
-    private volatile AdminSocketClient client;
+    private final AdminView frame;
+    private AdminSocketClient client;
     private ScheduledExecutorService poller;
     private LiveRoomInspectorDialog activeInspectorDialog;
     private final RoomInspectorRequests inspectorRequests = new RoomInspectorRequests();
-
+    private final AdminRequests requests = new AdminRequests();
     private AuthResult currentAdmin;
+    private AdminUserFilterRequest userFilter = new AdminUserFilterRequest("", "ALL", 0, 20);
 
-    public AdminController(AdminMainFrame frame) {
+    public AdminController(AdminView frame) {
         this.frame = frame;
         bindEvents();
     }
@@ -46,285 +48,229 @@ public final class AdminController {
     private void bindEvents() {
         frame.getAuthPanel().setOnLogin(this::handleLogin);
         frame.setOnLogout(this::handleLogout);
-        frame.setOnChangePassword(req -> {
-            AdminSocketClient activeClient = client;
-            if (activeClient == null || !activeClient.isConnected()) return;
-            activeClient.send(PacketType.CHANGE_PASSWORD, req).thenAccept(packet -> SwingUtilities.invokeLater(() -> {
-                if (client != activeClient) return;
-                if (packet.getType() == PacketType.ACK) frame.setStatusMessage("Đã đổi mật khẩu quản trị.", false);
-                else if (packet.getData() instanceof Packet.ErrorPayload error) frame.setStatusMessage(error.message(), true);
-            })).exceptionally(error -> {
-                SwingUtilities.invokeLater(() -> {
-                    if (client == activeClient) frame.setStatusMessage("Không đổi được mật khẩu: " + error.getMessage(), true);
-                });
-                return null;
-            });
-        });
-
+        frame.setOnChangePassword(req -> send(PacketType.CHANGE_PASSWORD, req, false, packet -> {
+            if (packet.getType() == PacketType.ACK) frame.setStatusMessage("Đã đổi mật khẩu quản trị.", false);
+            else frame.setStatusMessage(errorMessage(packet), true);
+        }, error -> frame.setStatusMessage("Không đổi được mật khẩu: " + error, true)));
         frame.getDashboardPanel().setOnRefresh(this::loadDashboardStats);
         frame.getDashboardPanel().setOnBroadcast(this::handleBroadcast);
-
         frame.getUsersPanel().setOnSearch(this::loadUsersPage);
         frame.getUsersPanel().setOnLock(this::handleLockUser);
         frame.getUsersPanel().setOnAdjust(this::handleAdjustBalance);
-
         frame.getRoomsPanel().setOnRefresh(this::loadRoomsMonitor);
         frame.getRoomsPanel().setOnReset(this::handleResetRoom);
         frame.getRoomsPanel().setOnInspect(this::openRoomInspector);
-
         frame.getLedgerPanel().setOnPageChange(this::loadLedgerPage);
     }
 
     private void handleLogin(AdminAuthPanel.LoginCredentials creds) {
+        closeSession();
+        long session = requests.beginSession();
+        String password = new String(creds.password());
+        Arrays.fill(creds.password(), '\0');
+        frame.getAuthPanel().clearPassword();
+        AdminSocketClient attempt = new AdminSocketClient(creds.host(), creds.port(),
+                packet -> SwingUtilities.invokeLater(() -> onServerPush(session, packet)),
+                () -> SwingUtilities.invokeLater(() -> onDisconnected(session)));
+        client = attempt;
         new Thread(() -> {
             try {
-                if (client != null) {
-                    client.close();
-                }
-
-                client = new AdminSocketClient(
-                        creds.host(),
-                        creds.port(),
-                        this::onServerPush,
-                        () -> SwingUtilities.invokeLater(this::onDisconnected)
-                );
-                client.connect();
-
-                String rawPass = new String(creds.password());
-                Arrays.fill(creds.password(), '\0');
-
-                Packet authPacket = client.send(PacketType.LOGIN, new AuthRequest(creds.username(), rawPass)).get();
-
-                if (authPacket.getType() == PacketType.AUTH_RESULT && authPacket.getData() instanceof AuthResult auth) {
-                    if (auth.success()) {
-                        if (!"ADMIN".equalsIgnoreCase(auth.role())) {
-                            client.close();
-                            SwingUtilities.invokeLater(() -> frame.getAuthPanel().showError("Tài khoản không có quyền Quản trị viên (ADMIN)"));
-                            return;
-                        }
-
-                        this.currentAdmin = auth;
-                        SwingUtilities.invokeLater(() -> {
-                            frame.showConsoleScreen(auth.displayName(), auth.role());
-                            startAutoPoller();
-                            loadDashboardStats();
-                            loadUsersPage(new AdminUserFilterRequest("", "ALL", 0, 20));
-                            loadRoomsMonitor();
-                            loadLedgerPage(0);
-                        });
+                attempt.connect();
+                Packet packet = attempt.send(PacketType.LOGIN, new AuthRequest(creds.username(), password)).get();
+                SwingUtilities.invokeLater(() -> {
+                    if (!requests.isCurrent(session)) return;
+                    if (packet.getData() instanceof AuthResult auth && auth.success()
+                            && "ADMIN".equalsIgnoreCase(auth.role()) && attempt.isConnected()) {
+                        currentAdmin = auth;
+                        frame.showConsoleScreen(auth.displayName(), auth.role());
+                        startAutoPoller(session);
+                        loadDashboardStats();
+                        loadUsersPage(new AdminUserFilterRequest("", "ALL", 0, 20));
+                        loadRoomsMonitor();
+                        loadLedgerPage(0);
                     } else {
-                        client.close();
-                        SwingUtilities.invokeLater(() -> frame.getAuthPanel().showError(auth.message() != null ? auth.message() : "Đăng nhập thất bại"));
+                        String message = errorMessage(packet);
+                        if (packet.getData() instanceof AuthResult auth && auth.success()) {
+                            message = "ADMIN".equalsIgnoreCase(auth.role())
+                                    ? "Kết nối máy chủ đã bị ngắt. Vui lòng đăng nhập lại."
+                                    : "Tài khoản không có quyền Quản trị viên (ADMIN)";
+                        }
+                        loginFailed(session, message);
                     }
-                } else if (authPacket.getType() == PacketType.ERROR && authPacket.getData() instanceof Packet.ErrorPayload err) {
-                    client.close();
-                    SwingUtilities.invokeLater(() -> frame.getAuthPanel().showError(err.message()));
-                } else {
-                    client.close();
-                    SwingUtilities.invokeLater(() -> frame.getAuthPanel().showError("Phản hồi không mong muốn từ máy chủ"));
-                }
-            } catch (Exception ex) {
-                if (client != null) {
-                    client.close();
-                }
-                SwingUtilities.invokeLater(() -> frame.getAuthPanel().showError("Không thể kết nối máy chủ: " + ex.getMessage()));
+                });
+            } catch (Exception error) {
+                attempt.close();
+                SwingUtilities.invokeLater(() -> loginFailed(session, "Không thể kết nối máy chủ: " + failureMessage(error)));
             }
         }, "admin-login-worker").start();
     }
 
-    private void handleLogout() {
+    private void loginFailed(long session, String message) {
+        if (!requests.isCurrent(session)) return;
+        closeSession();
+        frame.showAuthScreen();
+        frame.getAuthPanel().showError(message);
+    }
+
+    private void closeSession() {
+        requests.endSession();
         closeActiveInspector();
         stopAutoPoller();
-        if (client != null) {
-            client.close();
-            client = null;
-        }
+        AdminSocketClient previous = client;
+        client = null;
         currentAdmin = null;
+        userFilter = new AdminUserFilterRequest("", "ALL", 0, 20);
+        if (previous != null) previous.close();
+    }
+
+    private void handleLogout() {
+        closeSession();
         frame.showAuthScreen();
     }
 
-    private void onDisconnected() {
-        closeActiveInspector();
-        stopAutoPoller();
-        frame.setStatusMessage("Mất kết nối tới máy chủ. Vui lòng kiểm tra lại dịch vụ Server.", true);
+    private void onDisconnected(long session) {
+        if (!requests.isCurrent(session) || currentAdmin == null) return;
+        loginFailed(session, "Mất kết nối tới máy chủ. Vui lòng đăng nhập lại.");
     }
 
-    private void onServerPush(Packet packet) {
+    private void onServerPush(long session, Packet packet) {
+        if (!requests.isCurrent(session)) return;
+        if (packet.getType() == PacketType.ERROR && packet.getData() instanceof Packet.ErrorPayload error
+                && (error.code() == ErrorCode.USER_BLOCKED || error.code() == ErrorCode.UNAUTHENTICATED)) {
+            loginFailed(session, error.message());
+        }
+    }
+
+    /** Every callback is applied on the EDT, only to the session that issued it. */
+    private void send(PacketType type, Object data, boolean latestOnly,
+                      Consumer<Packet> onResponse, Consumer<String> onFailure) {
+        AdminSocketClient activeClient = client;
+        if (activeClient == null || !activeClient.isConnected() || currentAdmin == null) {
+            onFailure.accept("Chưa kết nối tới máy chủ");
+            return;
+        }
+        AdminRequests.Ticket ticket = requests.next(type, latestOnly);
+        activeClient.send(type, data).whenComplete((packet, error) -> SwingUtilities.invokeLater(() -> {
+            if (!requests.accepts(ticket)) return;
+            if (error != null) onFailure.accept(failureMessage(error));
+            else onResponse.accept(packet);
+        }));
     }
 
     public void loadDashboardStats() {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_STATS_REQ, null).thenAccept(packet -> {
-            if (packet.getData() instanceof AdminStatsSnapshot stats) {
-                SwingUtilities.invokeLater(() -> frame.getDashboardPanel().updateStats(stats));
-            }
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> frame.setStatusMessage("Không thể nạp số liệu thống kê: " + ex.getMessage(), true));
-            return null;
-        });
+        send(PacketType.ADMIN_STATS_REQ, null, true, packet -> {
+            if (packet.getType() == PacketType.ADMIN_STATS_RESP && packet.getData() instanceof AdminStatsSnapshot stats)
+                frame.getDashboardPanel().updateStats(stats);
+            else frame.setStatusMessage(errorMessage(packet), true);
+        }, error -> frame.setStatusMessage("Không thể nạp số liệu thống kê: " + error, true));
     }
 
     private void handleBroadcast(AdminBroadcastRequest req) {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_BROADCAST_REQ, req).thenAccept(packet -> {
-            SwingUtilities.invokeLater(() -> {
-                if (packet.getType() == PacketType.ACK) {
-                    frame.getDashboardPanel().broadcastSentSuccess();
-                } else if (packet.getData() instanceof Packet.ErrorPayload err) {
-                    frame.getDashboardPanel().broadcastFailed(err.message());
-                }
-            });
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> frame.getDashboardPanel().broadcastFailed(ex.getMessage()));
-            return null;
-        });
+        send(PacketType.ADMIN_BROADCAST_REQ, req, false, packet -> {
+            if (packet.getType() == PacketType.ACK) frame.getDashboardPanel().broadcastSentSuccess();
+            else frame.getDashboardPanel().broadcastFailed(errorMessage(packet));
+        }, error -> frame.getDashboardPanel().broadcastFailed(error));
     }
 
     public void loadUsersPage(AdminUserFilterRequest req) {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_USERS_PAGE_REQ, req).thenAccept(packet -> {
-            if (packet.getData() instanceof PageResult<?> pageRes) {
-                @SuppressWarnings("unchecked")
-                PageResult<AdminUserItem> usersPage = (PageResult<AdminUserItem>) pageRes;
-                SwingUtilities.invokeLater(() -> frame.getUsersPanel().updatePage(usersPage));
-            }
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> frame.setStatusMessage("Lỗi tải danh sách người dùng: " + ex.getMessage(), true));
-            return null;
-        });
+        userFilter = req;
+        send(PacketType.ADMIN_USERS_PAGE_REQ, req, true, packet -> {
+            if (packet.getType() == PacketType.ADMIN_USERS_PAGE_RESP && packet.getData() instanceof PageResult<?> result) {
+                if (req.page() > 0 && req.page() >= result.totalPages()) {
+                    loadUsersPage(new AdminUserFilterRequest(req.query(), req.statusFilter(),
+                            Math.max(0, result.totalPages() - 1), req.pageSize()));
+                    return;
+                }
+                @SuppressWarnings("unchecked") PageResult<AdminUserItem> page = (PageResult<AdminUserItem>) result;
+                frame.getUsersPanel().updatePage(page);
+            } else frame.setStatusMessage(errorMessage(packet), true);
+        }, error -> frame.setStatusMessage("Lỗi tải danh sách người dùng: " + error, true));
     }
 
-    private void handleLockUser(AdminLockUserRequest req) {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_LOCK_USER_REQ, req).thenAccept(packet -> {
-            SwingUtilities.invokeLater(() -> {
-                if (packet.getType() == PacketType.ACK) {
-                    JOptionPane.showMessageDialog(frame, "Đã cập nhật trạng thái tài khoản thành công.", "Thành Công", JOptionPane.INFORMATION_MESSAGE);
-                    loadUsersPage(new AdminUserFilterRequest("", "ALL", frame.getUsersPanel().getCurrentPage(), 20));
-                    loadDashboardStats();
-                } else if (packet.getData() instanceof Packet.ErrorPayload err) {
-                    JOptionPane.showMessageDialog(frame, "Không thể khóa/mở khóa: " + err.message(), "Lỗi", JOptionPane.ERROR_MESSAGE);
-                }
-            });
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(frame, "Lỗi kết nối: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE));
-            return null;
+    void handleLockUser(AdminLockUserRequest req) {
+        send(PacketType.ADMIN_LOCK_USER_REQ, req, false, packet -> {
+            frame.getUsersPanel().setActionsBusy(false);
+            if (packet.getType() == PacketType.ACK) {
+                frame.setStatusMessage("Đã cập nhật trạng thái tài khoản #" + req.userId() + ".", false);
+                loadUsersPage(userFilter);
+                loadDashboardStats();
+                loadRoomsMonitor();
+            } else showActionError("Không thể khóa/mở khóa: " + errorMessage(packet));
+        }, error -> {
+            frame.getUsersPanel().setActionsBusy(false);
+            frame.setStatusMessage("Lỗi kết nối: " + error, true);
         });
     }
 
     private void handleAdjustBalance(AdminAdjustBalanceRequest req) {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_ADJUST_BALANCE_REQ, req).thenAccept(packet -> {
-            SwingUtilities.invokeLater(() -> {
-                if (packet.getType() == PacketType.ACK) {
-                    JOptionPane.showMessageDialog(frame, "Đã điều chỉnh số dư điểm thành công.", "Thành Công", JOptionPane.INFORMATION_MESSAGE);
-                    loadUsersPage(new AdminUserFilterRequest("", "ALL", frame.getUsersPanel().getCurrentPage(), 20));
-                    loadDashboardStats();
-                    loadLedgerPage(0);
-                } else if (packet.getData() instanceof Packet.ErrorPayload err) {
-                    JOptionPane.showMessageDialog(frame, "Không thể điều chỉnh điểm: " + err.message(), "Lỗi", JOptionPane.ERROR_MESSAGE);
-                }
-            });
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(frame, "Lỗi kết nối: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE));
-            return null;
+        send(PacketType.ADMIN_ADJUST_BALANCE_REQ, req, false, packet -> {
+            frame.getUsersPanel().setActionsBusy(false);
+            if (packet.getType() == PacketType.ACK) {
+                frame.setStatusMessage("Đã điều chỉnh số dư tài khoản #" + req.userId() + ".", false);
+                loadUsersPage(userFilter);
+                loadDashboardStats();
+                loadLedgerPage(0);
+            } else showActionError("Không thể điều chỉnh điểm: " + errorMessage(packet));
+        }, error -> {
+            frame.getUsersPanel().setActionsBusy(false);
+            frame.setStatusMessage("Lỗi kết nối: " + error, true);
         });
     }
 
     public void loadRoomsMonitor() {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_ROOMS_MONITOR_REQ, null).thenAccept(packet -> {
-            if (packet.getData() instanceof List<?> list) {
-                @SuppressWarnings("unchecked")
-                List<AdminRoomDetail> rooms = (List<AdminRoomDetail>) list;
-                SwingUtilities.invokeLater(() -> frame.getRoomsPanel().updateRooms(rooms));
-            }
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> frame.setStatusMessage("Lỗi giám sát bàn: " + ex.getMessage(), true));
-            return null;
-        });
+        send(PacketType.ADMIN_ROOMS_MONITOR_REQ, null, true, packet -> {
+            if (packet.getType() == PacketType.ADMIN_ROOMS_MONITOR_RESP && packet.getData() instanceof List<?> result) {
+                @SuppressWarnings("unchecked") List<AdminRoomDetail> rooms = (List<AdminRoomDetail>) result;
+                frame.getRoomsPanel().updateRooms(rooms);
+            } else frame.setStatusMessage(errorMessage(packet), true);
+        }, error -> frame.setStatusMessage("Lỗi giám sát bàn: " + error, true));
     }
 
     private void handleResetRoom(AdminResetRoomRequest req) {
-        if (client == null || !client.isConnected()) return;
+        send(PacketType.ADMIN_FORCE_RESET_ROOM, req, false, packet -> {
+            if (packet.getType() == PacketType.ACK) {
+                frame.setStatusMessage("Đã đặt lại bàn #" + req.roomId() + ".", false);
+                loadRoomsMonitor();
+                loadDashboardStats();
+                loadLedgerPage(0);
+                if (activeInspectorDialog != null && activeInspectorDialog.isVisible()
+                        && activeInspectorDialog.roomId() == req.roomId()) refreshRoomInspector(req.roomId());
+            } else showActionError("Không thể giải tán bàn: " + errorMessage(packet));
+        }, error -> showActionError("Lỗi kết nối: " + error));
+    }
 
-        client.send(PacketType.ADMIN_FORCE_RESET_ROOM, req).thenAccept(packet -> {
-            SwingUtilities.invokeLater(() -> {
-                if (packet.getType() == PacketType.ACK) {
-                    JOptionPane.showMessageDialog(frame, "Đã giải tán / đặt lại bàn #" + req.roomId() + " thành công.", "Thành Công", JOptionPane.INFORMATION_MESSAGE);
-                    loadRoomsMonitor();
-                    loadDashboardStats();
-                    if (activeInspectorDialog != null && activeInspectorDialog.isVisible()
-                            && activeInspectorDialog.roomId() == req.roomId()) {
-                        refreshRoomInspector(req.roomId());
-                    }
-                } else if (packet.getData() instanceof Packet.ErrorPayload err) {
-                    JOptionPane.showMessageDialog(frame, "Không thể giải tán bàn: " + err.message(), "Lỗi", JOptionPane.ERROR_MESSAGE);
-                }
-            });
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(frame, "Lỗi kết nối: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE));
-            return null;
-        });
+    private void showActionError(String message) {
+        frame.setStatusMessage(message, true);
+        JOptionPane.showMessageDialog(frame.window(), message, "Lỗi", JOptionPane.ERROR_MESSAGE);
     }
 
     private void openRoomInspector(long roomId) {
         closeActiveInspector();
-
-        activeInspectorDialog = new LiveRoomInspectorDialog(
-                frame,
-                roomId,
-                this::refreshRoomInspector,
-                this::handleInspectorResetRoom
-        );
-
+        activeInspectorDialog = new LiveRoomInspectorDialog(frame.window(), roomId,
+                this::refreshRoomInspector, this::handleInspectorResetRoom);
         refreshRoomInspector(roomId);
         activeInspectorDialog.setVisible(true);
     }
 
     private void refreshRoomInspector(long roomId) {
-        if (client == null || !client.isConnected()) return;
         LiveRoomInspectorDialog target = activeInspectorDialog;
         if (target == null || target.roomId() != roomId) return;
         RoomInspectorRequests.Ticket request = inspectorRequests.next(roomId);
-
-        client.send(PacketType.ADMIN_INSPECT_ROOM_REQ, roomId).thenAccept(packet -> {
-            if (packet.getData() instanceof AdminLiveMatchDetail detail) {
-                SwingUtilities.invokeLater(() -> {
-                    if (activeInspectorDialog == target && target.isVisible()
-                            && inspectorRequests.accepts(request, detail.roomId())) {
-                        target.updateMatchDetail(detail);
-                    }
-                });
-            }
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> {
-                if (activeInspectorDialog == target && target.isVisible()
-                        && inspectorRequests.accepts(request, roomId)) {
-                    frame.setStatusMessage("Lỗi tải chi tiết ván: " + ex.getMessage(), true);
-                }
-            });
-            return null;
+        send(PacketType.ADMIN_INSPECT_ROOM_REQ, roomId, false, packet -> {
+            if (activeInspectorDialog != target || !target.isVisible()) return;
+            if (packet.getType() == PacketType.ADMIN_INSPECT_ROOM_RESP && packet.getData() instanceof AdminLiveMatchDetail detail) {
+                if (inspectorRequests.accepts(request, detail.roomId())) target.updateMatchDetail(detail);
+            } else if (inspectorRequests.accepts(request, roomId)) frame.setStatusMessage(errorMessage(packet), true);
+        }, error -> {
+            if (activeInspectorDialog == target && target.isVisible() && inspectorRequests.accepts(request, roomId))
+                frame.setStatusMessage("Lỗi tải chi tiết ván: " + error, true);
         });
     }
 
     private void handleInspectorResetRoom(long roomId) {
-        String reason = JOptionPane.showInputDialog(
-                activeInspectorDialog,
-                "Nhập lý do cưỡng chế giải tán / hủy bàn #" + roomId + ":",
-                "Giải Tán Bàn Kẹt",
-                JOptionPane.WARNING_MESSAGE
-        );
-
-        if (reason != null && !reason.isBlank()) {
-            handleResetRoom(new AdminResetRoomRequest(roomId, reason.trim()));
-        }
+        String reason = JOptionPane.showInputDialog(activeInspectorDialog,
+                "Nhập lý do cưỡng chế giải tán / hủy bàn #" + roomId + ":", "Giải Tán Bàn Kẹt", JOptionPane.WARNING_MESSAGE);
+        if (reason != null && !reason.isBlank()) handleResetRoom(new AdminResetRoomRequest(roomId, reason.trim()));
     }
 
     private void closeActiveInspector() {
@@ -337,31 +283,30 @@ public final class AdminController {
     }
 
     public void loadLedgerPage(int page) {
-        if (client == null || !client.isConnected()) return;
-
-        client.send(PacketType.ADMIN_LEDGER_PAGE_REQ, new PageRequest(page, 20)).thenAccept(packet -> {
-            if (packet.getData() instanceof PageResult<?> pageRes) {
-                @SuppressWarnings("unchecked")
-                PageResult<AdminLedgerItem> ledgerPage = (PageResult<AdminLedgerItem>) pageRes;
-                SwingUtilities.invokeLater(() -> frame.getLedgerPanel().updatePage(ledgerPage));
-            }
-        }).exceptionally(ex -> {
-            SwingUtilities.invokeLater(() -> frame.setStatusMessage("Lỗi tải sổ cái: " + ex.getMessage(), true));
-            return null;
-        });
+        send(PacketType.ADMIN_LEDGER_PAGE_REQ, new PageRequest(page, 20), true, packet -> {
+            if (packet.getType() == PacketType.ADMIN_LEDGER_PAGE_RESP && packet.getData() instanceof PageResult<?> result) {
+                if (page > 0 && page >= result.totalPages()) {
+                    loadLedgerPage(Math.max(0, result.totalPages() - 1));
+                    return;
+                }
+                @SuppressWarnings("unchecked") PageResult<AdminLedgerItem> ledger = (PageResult<AdminLedgerItem>) result;
+                frame.getLedgerPanel().updatePage(ledger);
+            } else frame.setStatusMessage(errorMessage(packet), true);
+        }, error -> frame.setStatusMessage("Lỗi tải sổ cái: " + error, true));
     }
 
-    private void startAutoPoller() {
+    private void startAutoPoller(long session) {
         stopAutoPoller();
-        poller = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "admin-dashboard-poller");
-            t.setDaemon(true);
-            return t;
+        poller = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "admin-dashboard-poller");
+            thread.setDaemon(true);
+            return thread;
         });
-        poller.scheduleWithFixedDelay(() -> {
+        poller.scheduleWithFixedDelay(() -> SwingUtilities.invokeLater(() -> {
+            if (!requests.isCurrent(session)) return;
             loadDashboardStats();
             loadRoomsMonitor();
-        }, 5, 5, TimeUnit.SECONDS);
+        }), 5, 5, TimeUnit.SECONDS);
     }
 
     private void stopAutoPoller() {
@@ -369,5 +314,16 @@ public final class AdminController {
             poller.shutdownNow();
             poller = null;
         }
+    }
+
+    private static String errorMessage(Packet packet) {
+        if (packet.getData() instanceof Packet.ErrorPayload error) return error.message();
+        if (packet.getData() instanceof AuthResult auth && auth.message() != null) return auth.message();
+        return "Phản hồi không mong muốn từ máy chủ";
+    }
+
+    private static String failureMessage(Throwable error) {
+        while (error.getCause() != null) error = error.getCause();
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     }
 }

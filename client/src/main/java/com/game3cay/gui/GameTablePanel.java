@@ -11,7 +11,6 @@ import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -19,11 +18,8 @@ import java.awt.event.HierarchyEvent;
 import java.awt.geom.Ellipse2D;
 import java.io.Serial;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
@@ -180,7 +176,7 @@ public final class GameTablePanel extends JPanel {
         flyingChips.clear();
         long now = System.nanoTime();
         for (int i = 0; i < 12; i++) {
-            long delay = (long) (i * 35_000_000L);
+            long delay = i * 35_000_000L;
             double ctrlX = 550 + (Math.random() - 0.5) * 180;
             double ctrlY = 370 - 70 - Math.random() * 90;
             flyingChips.add(new FlyingChip(550, 370, wx, wy, ctrlX, ctrlY, now + delay, 550_000_000L));

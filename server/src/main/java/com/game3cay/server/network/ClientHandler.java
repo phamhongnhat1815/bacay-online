@@ -4,8 +4,6 @@ import com.game3cay.server.bus.BUSException;
 import com.game3cay.server.bus.GameBUS;
 import com.game3cay.server.bus.UserBUS;
 import com.game3cay.server.bus.UserDTO;
-import com.game3cay.server.bus.PointTransferBUS;
-import com.game3cay.server.bus.PointRequestResolution;
 import com.game3cay.server.room.RoomManager;
 import com.game3cay.shared.model.AdminAdjustBalanceRequest;
 import com.game3cay.shared.model.AdminBroadcastRequest;
@@ -31,13 +29,6 @@ import com.game3cay.shared.model.RegisterRequest;
 import com.game3cay.shared.model.RoomChatEvent;
 import com.game3cay.shared.model.RoomSnapshot;
 import com.game3cay.shared.model.UpdateProfileRequest;
-import com.game3cay.shared.model.PointTransferRequest;
-import com.game3cay.shared.model.PointTransferReceipt;
-import com.game3cay.shared.model.PointRequestCreate;
-import com.game3cay.shared.model.PointRequestReply;
-import com.game3cay.shared.model.PointRequestDecision;
-import com.game3cay.shared.model.PointRequestItem;
-import com.game3cay.shared.model.PointRequestStatus;
 import com.game3cay.shared.network.ErrorCode;
 import com.game3cay.shared.network.Packet;
 import com.game3cay.shared.network.PacketIO;
@@ -75,7 +66,7 @@ public final class ClientHandler implements Runnable {
     private final SessionRegistry sessions;
     private final RoomManager rooms;
     private final GameBUS games;
-    private final PointTransferBUS points;
+    private final AtomicBoolean accessRevoked = new AtomicBoolean();
 
     private final Map<String, Packet> replies = Collections.synchronizedMap(
             new LinkedHashMap<>(128, 0.75f, true) {
@@ -115,17 +106,11 @@ public final class ClientHandler implements Runnable {
             RoomManager rooms,
             GameBUS games
     ) {
-        this(socket, users, sessions, rooms, games, null);
-    }
-
-    public ClientHandler(Socket socket, UserBUS users, SessionRegistry sessions, RoomManager rooms,
-                         GameBUS games, PointTransferBUS points) {
         this.socket = socket;
         this.users = users;
         this.sessions = sessions;
         this.rooms = rooms;
         this.games = games;
-        this.points = points;
     }
 
     @Override
@@ -170,6 +155,7 @@ public final class ClientHandler implements Runnable {
     }
 
     private void handlePacket(Packet packet) {
+        if (accessRevoked.get()) return;
         if (packet.getType() == PacketType.PONG) {
             String expected = waitingPong.get();
             if (expected != null
@@ -224,7 +210,21 @@ public final class ClientHandler implements Runnable {
                     }
 
                     currentUser = authenticated;
-                    sendAuthResult(requestId, currentUser);
+                    try {
+                        // Authentication can overlap an admin lock before this session is bound.
+                        UserDTO latest = requireUserBUS().getProfile(authenticated.userId());
+                        if (accessRevoked.get() || "BLOCKED".equalsIgnoreCase(latest.status())) {
+                            throw fail(ErrorCode.USER_BLOCKED, "Tài khoản của bạn đã bị khóa");
+                        }
+                        if (!"ACTIVE".equalsIgnoreCase(latest.status())) {
+                            throw fail(ErrorCode.FORBIDDEN, "Tài khoản hiện không được phép đăng nhập");
+                        }
+                        currentUser = latest;
+                        sendAuthResult(requestId, currentUser);
+                    } catch (BUSException | RuntimeException error) {
+                        clearSession();
+                        throw error;
+                    }
                 }
 
                 case LOGOUT -> {
@@ -298,85 +298,6 @@ public final class ClientHandler implements Runnable {
 
                 case GET_PROFILE -> sendProfile(requestId, requireAuthenticatedUser().userId());
 
-                case POINT_TRANSFER -> {
-                    long actor = requirePlayerUser().userId();
-                    var req = (PointTransferRequest) packet.getData();
-                    PointTransferBUS service = requirePoints();
-                    var previous = service.findTransfer(actor, req.operationId());
-                    if (previous.isPresent()) {
-                        PointTransferReceipt receipt = previous.get();
-                        if (receipt.requestId() != null || receipt.recipientId() != req.recipientId()
-                                || receipt.amount().compareTo(req.amount()) != 0
-                                || !java.util.Objects.equals(normalizePointMessage(receipt.message()), normalizePointMessage(req.message()))) {
-                            throw fail(ErrorCode.INVALID_REQUEST, "Mã giao dịch đã được sử dụng cho nội dung khác");
-                        }
-                        send(new Packet(PacketType.POINT_TRANSFER_RESULT, requestId, receipt));
-                        break;
-                    }
-                    PointTransferReceipt receipt = rooms.transferPoints(actor, req.recipientId(), 0,
-                            roomId -> service.transfer(actor, req, roomId));
-                    send(new Packet(PacketType.POINT_TRANSFER_RESULT, requestId, receipt));
-                    sessions.broadcast(List.of(receipt.recipientId()), Packet.serverPush(PacketType.POINT_TRANSFER_RESULT, receipt));
-                }
-
-                case POINT_REQUEST_CREATE -> {
-                    long actor = requirePlayerUser().userId();
-                    var req = (PointRequestCreate) packet.getData();
-                    var previous = requirePoints().findCreatedRequest(actor, req.operationId());
-                    if (previous.isPresent()) {
-                        PointRequestItem item = previous.get();
-                        if (item.targetUserId() != req.targetUserId() || item.amount().compareTo(req.amount()) != 0
-                                || !java.util.Objects.equals(normalizePointMessage(item.message()), normalizePointMessage(req.message()))) {
-                            throw fail(ErrorCode.INVALID_REQUEST, "Mã yêu cầu đã được sử dụng cho nội dung khác");
-                        }
-                        send(new Packet(PacketType.POINT_REQUEST_UPDATED, requestId, item));
-                        break;
-                    }
-                    long roomId = rooms.sharedWaitingRoom(actor, req.targetUserId());
-                    PointRequestItem item = requirePoints().createRequest(actor, req, roomId);
-                    send(new Packet(PacketType.POINT_REQUEST_UPDATED, requestId, item));
-                    rooms.notifyPointRequest(item);
-                }
-
-                case POINT_REQUEST_REPLY -> {
-                    long actor = requirePlayerUser().userId();
-                    var req = (PointRequestReply) packet.getData();
-                    PointTransferBUS service = requirePoints();
-                    PointRequestItem item = service.getRequest(actor, req.requestId());
-                    if (req.decision() == PointRequestDecision.ACCEPT) {
-                        if (item.targetUserId() != actor) throw fail(ErrorCode.FORBIDDEN, "Chỉ người được xin điểm mới có thể cho điểm");
-                        if (item.status() == PointRequestStatus.FULFILLED) {
-                            send(new Packet(PacketType.POINT_TRANSFER_RESULT, requestId, service.getTransfer(actor, item.transferId())));
-                            break;
-                        }
-                        AtomicReference<PointRequestResolution> resolution = new AtomicReference<>();
-                        PointTransferReceipt receipt = rooms.transferPoints(actor, item.requesterId(), item.roomId(), roomId -> {
-                            PointRequestResolution result = service.reply(actor, req);
-                            resolution.set(result);
-                            return result.transfer();
-                        });
-                        send(new Packet(PacketType.POINT_TRANSFER_RESULT, requestId, receipt));
-                        rooms.notifyPointRequest(resolution.get().request());
-                        sessions.broadcast(List.of(receipt.recipientId()), Packet.serverPush(PacketType.POINT_TRANSFER_RESULT, receipt));
-                    } else {
-                        PointRequestResolution result = service.reply(actor, req);
-                        send(new Packet(PacketType.POINT_REQUEST_UPDATED, requestId, result.request()));
-                        rooms.notifyPointRequest(result.request());
-                    }
-                }
-
-                case POINT_REQUEST_LIST -> {
-                    long actor = requirePlayerUser().userId();
-                    send(new Packet(PacketType.POINT_REQUEST_LIST_RESULT, requestId,
-                            requirePoints().listRequests(actor, (PageRequest) packet.getData())));
-                }
-
-                case POINT_TRANSFER_HISTORY -> {
-                    long actor = requirePlayerUser().userId();
-                    send(new Packet(PacketType.POINT_TRANSFER_HISTORY_RESULT, requestId,
-                            requirePoints().history(actor, (PageRequest) packet.getData())));
-                }
-
                 case UPDATE_PROFILE -> {
                     long userId = requireAuthenticatedUser().userId();
                     if (rooms.inRoom(userId)) {
@@ -431,11 +352,17 @@ public final class ClientHandler implements Runnable {
                 }
 
                 case ADMIN_LOCK_USER_REQ -> {
-                    requireAdminUser();
+                    UserDTO admin = requireAdminUser();
                     AdminLockUserRequest req = (AdminLockUserRequest) packet.getData();
+                    if (req.blocked() && req.userId() == admin.userId()) {
+                        throw fail(ErrorCode.FORBIDDEN, "Bạn không thể tự khóa tài khoản quản trị đang đăng nhập");
+                    }
+                    if (req.blocked() && "ADMIN".equalsIgnoreCase(requireUserBUS().getProfile(req.userId()).role())) {
+                        throw fail(ErrorCode.FORBIDDEN, "Không thể khóa tài khoản Quản trị viên");
+                    }
                     requireUserBUS().updateUserStatusForAdmin(req.userId(), req.blocked());
                     if (req.blocked()) {
-                        sessions.find(req.userId()).ifPresent(ClientHandler::close);
+                        sessions.find(req.userId()).ifPresent(ClientHandler::blockAccount);
                     }
                     sendAck(requestId);
                 }
@@ -523,15 +450,6 @@ public final class ClientHandler implements Runnable {
             throw fail(ErrorCode.INTERNAL_ERROR, "Máy chủ chưa được cấu hình dịch vụ tài khoản");
         }
         return users;
-    }
-
-    private PointTransferBUS requirePoints() throws BUSException {
-        if (points == null) throw fail(ErrorCode.INVALID_STATE, "Máy chủ chưa cấu hình chuyển điểm");
-        return points;
-    }
-
-    private static String normalizePointMessage(String message) {
-        return message == null ? "" : message.strip();
     }
 
     private UserDTO requireAuthenticatedUser() throws BUSException {
@@ -631,6 +549,14 @@ public final class ClientHandler implements Runnable {
         if (!sessions.allowAuthentication(address, username, registration)) {
             throw fail(ErrorCode.RATE_LIMIT_EXCEEDED, "Đã vượt giới hạn xác thực. Vui lòng chờ một phút rồi thử lại.");
         }
+    }
+
+    /** Send the terminal reason before closing so clients do not attempt to restore a blocked session. */
+    private void blockAccount() {
+        if (!accessRevoked.compareAndSet(false, true)) return;
+        send(Packet.error(null, ErrorCode.USER_BLOCKED, "Tài khoản của bạn đã bị quản trị viên khóa"));
+        try { sender.execute(this::close); }
+        catch (RejectedExecutionException error) { close(); }
     }
 
     public void close() {

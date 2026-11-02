@@ -218,23 +218,24 @@ public final class UserDAO {
         }
     }
 
-    public void adjustUserBalance(long adminId, long targetUserId, BigDecimal delta, String reason)
+    public UserDTO adjustUserBalance(long adminId, long targetUserId, BigDecimal delta, String reason)
             throws SQLException, BUSException {
         try (Connection conn = connections.open()) {
             conn.setAutoCommit(false);
             try {
-                BigDecimal currentBalance;
+                UserDTO currentUser;
                 try (PreparedStatement lockStmt = conn.prepareStatement(
-                        "SELECT balance FROM users WHERE id = ? FOR UPDATE")) {
+                        "SELECT * FROM users WHERE id = ? FOR UPDATE")) {
                     lockStmt.setLong(1, targetUserId);
                     try (ResultSet rs = lockStmt.executeQuery()) {
                         if (!rs.next()) {
                             throw new BUSException(ErrorCode.INVALID_REQUEST, "Không tìm thấy người dùng");
                         }
-                        currentBalance = rs.getBigDecimal("balance");
+                        currentUser = readAccount(rs).profile();
                     }
                 }
 
+                BigDecimal currentBalance = currentUser.balance();
                 BigDecimal newBalance = currentBalance.add(delta);
                 if (newBalance.signum() < 0) {
                     throw new BUSException(ErrorCode.INVALID_BET_AMOUNT, "Số dư sau điều chỉnh không thể âm");
@@ -261,12 +262,14 @@ public final class UserDAO {
                     insertStmt.executeUpdate();
                 }
 
+                UserDTO updatedUser = new UserDTO(currentUser.userId(), currentUser.username(), currentUser.displayName(),
+                        currentUser.email(), currentUser.avatarUrl(), newBalance, currentUser.status(), currentUser.role(),
+                        currentUser.totalGames(), currentUser.totalWins(), currentUser.totalLosses());
                 conn.commit();
-            } catch (Exception e) {
-                conn.rollback();
-                if (e instanceof BUSException be) {
-                    throw be;
-                }
+                return updatedUser;
+            } catch (SQLException | BUSException | RuntimeException e) {
+                try { conn.rollback(); }
+                catch (SQLException rollbackError) { e.addSuppressed(rollbackError); }
                 throw e;
             }
         }
@@ -308,13 +311,7 @@ public final class UserDAO {
                 + "UNION ALL SELECT a.adjustment_id, a.target_user_id, u.username, a.delta, a.balance_before, "
                 + "a.balance_after, CAST(UNIX_TIMESTAMP(a.created_at) AS DECIMAL(20,0))*1000 AS ts, 'ADMIN', au.username, a.reason "
                 + "FROM admin_adjustments a JOIN users u ON a.target_user_id=u.id "
-                + "LEFT JOIN users au ON a.admin_user_id=au.id "
-                + "UNION ALL SELECT t.transfer_id,e.user_id,u.username,e.delta,e.balance_before,e.balance_after, "
-                + "t.committed_at AS ts,CASE WHEN e.delta<0 THEN 'GIFT_SENT' ELSE 'GIFT_RECEIVED' END,actor.username, "
-                + "CONCAT(CASE WHEN e.delta<0 THEN 'Cho ' ELSE 'Nhận từ ' END, "
-                + "CASE WHEN e.delta<0 THEN t.recipient_name ELSE t.sender_name END,': ',t.message) "
-                + "FROM point_transfer_entries e JOIN point_transfers t ON e.transfer_id=t.transfer_id "
-                + "JOIN users u ON e.user_id=u.id JOIN users actor ON t.sender_id=actor.id";
+                + "LEFT JOIN users au ON a.admin_user_id=au.id";
         try (Connection conn = connections.open()) {
             long totalItems;
             try (Statement stmt = conn.createStatement();

@@ -8,19 +8,12 @@ import com.game3cay.server.game.DefaultGameEngine;
 import com.game3cay.server.game.CompletedRound;
 import com.game3cay.server.game.RoundParticipant;
 import com.game3cay.shared.model.BetAction;
-import com.game3cay.shared.model.PointTransferRequest;
-import com.game3cay.shared.model.PointRequestCreate;
-import com.game3cay.shared.model.PointRequestReply;
-import com.game3cay.shared.model.PointRequestDecision;
-import com.game3cay.shared.model.PointRequestStatus;
-import com.game3cay.shared.model.PageRequest;
 import com.game3cay.shared.security.PasswordUtil;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -49,6 +42,7 @@ class MySqlSchemaTest {
                 try (var connection = connections.open()) {
                     executeScript(connection, sql);
                     executeScript(connection, sql);
+                    assertRemovedTablesAreAbsent(connection);
                     try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT COUNT(*) FROM users")) {
                         assertTrue(rows.next());
                         assertEquals(0, rows.getLong(1));
@@ -86,13 +80,25 @@ class MySqlSchemaTest {
                         insert.setString(1, PasswordUtil.hash("legacy-password-123"));
                         insert.executeUpdate();
                     }
+                    statement.execute("CREATE TABLE app_migrations(name VARCHAR(100) PRIMARY KEY)");
+                    statement.execute("INSERT INTO app_migrations VALUES('schema_v3_point_transfers')");
+                    statement.execute("CREATE TABLE point_requests(request_id VARCHAR(36) PRIMARY KEY)");
+                    statement.execute("CREATE TABLE point_transfers(transfer_id VARCHAR(36) PRIMARY KEY,request_id VARCHAR(36),"
+                            + "FOREIGN KEY(request_id) REFERENCES point_requests(request_id))");
+                    statement.execute("CREATE TABLE point_transfer_entries(transfer_id VARCHAR(36),user_id BIGINT,"
+                            + "FOREIGN KEY(transfer_id) REFERENCES point_transfers(transfer_id))");
+                    statement.execute("INSERT INTO point_requests VALUES('old-request')");
+                    statement.execute("INSERT INTO point_transfers VALUES('old-transfer','old-request')");
+                    statement.execute("INSERT INTO point_transfer_entries VALUES('old-transfer',1)");
                     executeScript(connection, sql);
                     executeScript(connection, sql);
+                    assertRemovedTablesAreAbsent(connection);
                 }
                 JdbcGameBUS games = new JdbcGameBUS(connections);
                 games.checkSchema();
                 JdbcUserBUS users = new JdbcUserBUS(connections);
                 long legacy = users.authenticate("legacy", "legacy-password-123").userId();
+                assertEquals(new BigDecimal("1000.00"), users.getProfile(legacy).balance());
                 assertTrue(AdminBootstrap.initialize(connections, temporary.resolve("admin.properties"), "installation-secret-12345"));
                 long adminId = users.authenticate("admin", "installation-secret-12345").userId();
                 long other = users.register("other_player", "password123", "Other", null).userId();
@@ -111,56 +117,23 @@ class MySqlSchemaTest {
                 users.adjustBalanceForAdmin(adminId, legacy, BigDecimal.ONE, "MySQL integration");
                 assertEquals(3, users.getLedgerForAdmin(0, 20).totalItems());
                 assertEquals(2, games.getLeaderboard(0, 20).totalItems());
-                try (var connection = connections.open(); var statement = connection.createStatement()) {
-                    statement.execute("UPDATE users SET total_games=3 WHERE role='USER'");
-                }
-                var points = new JdbcPointTransferBUS(connections);
-                var gift = new PointTransferRequest(UUID.randomUUID().toString(), other, new BigDecimal("25.00"), "MySQL gift");
-                var transferred = points.transfer(legacy, gift, 1);
-                assertTrue(transferred.created());
-                assertFalse(points.transfer(legacy, gift, 1).created());
-                var requested = points.createRequest(legacy,
-                        new PointRequestCreate(UUID.randomUUID().toString(), other, new BigDecimal("5.00"), "MySQL request"), 1);
-                var reply = new PointRequestReply(UUID.randomUUID().toString(), requested.requestId(), PointRequestDecision.ACCEPT);
-                assertTrue(points.reply(other, reply).transfer().created());
-                assertFalse(points.reply(other, reply).transfer().created());
-                assertEquals(PointRequestStatus.FULFILLED, points.getRequest(legacy, requested.requestId()).status());
-                assertEquals(2, points.history(legacy, new PageRequest(0, 20)).totalItems());
-                assertEquals(7, users.getLedgerForAdmin(0, 20).totalItems());
-                var racingRequest = points.createRequest(legacy,
-                        new PointRequestCreate(UUID.randomUUID().toString(), other, new BigDecimal("60.00"), "MySQL race"), 1);
-                BigDecimal totalBefore = users.getProfile(legacy).balance().add(users.getProfile(other).balance());
-                try (var workers = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-                    var start = new java.util.concurrent.CountDownLatch(1);
-                    var accept = workers.submit(() -> {
-                        start.await();
-                        try {
-                            points.reply(other, new PointRequestReply(UUID.randomUUID().toString(), racingRequest.requestId(), PointRequestDecision.ACCEPT));
-                            return true;
-                        } catch (BUSException e) {
-                            assertEquals(com.game3cay.shared.network.ErrorCode.INVALID_STATE, e.getErrorCode());
-                            return false;
-                        }
-                    });
-                    var cancel = workers.submit(() -> {
-                        start.await();
-                        try {
-                            points.reply(legacy, new PointRequestReply(UUID.randomUUID().toString(), racingRequest.requestId(), PointRequestDecision.CANCEL));
-                            return true;
-                        } catch (BUSException e) {
-                            assertEquals(com.game3cay.shared.network.ErrorCode.INVALID_STATE, e.getErrorCode());
-                            return false;
-                        }
-                    });
-                    start.countDown();
-                    assertNotEquals(accept.get(10, java.util.concurrent.TimeUnit.SECONDS), cancel.get(10, java.util.concurrent.TimeUnit.SECONDS));
-                }
-                assertEquals(totalBefore, users.getProfile(legacy).balance().add(users.getProfile(other).balance()));
-                var finalState = points.getRequest(legacy, racingRequest.requestId()).status();
-                assertTrue(finalState == PointRequestStatus.FULFILLED || finalState == PointRequestStatus.CANCELLED);
             } finally {
                 try (var statement = admin.createStatement()) { statement.execute("DROP DATABASE " + database); }
             }
+        }
+    }
+
+    private static void assertRemovedTablesAreAbsent(Connection connection) throws Exception {
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() "
+                        + "AND TABLE_NAME IN ('point_requests','point_transfers','point_transfer_entries')")) {
+            assertTrue(rows.next());
+            assertEquals(0, rows.getLong(1));
+        }
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(
+                "SELECT COUNT(*) FROM app_migrations WHERE name='schema_v3_point_transfers'")) {
+            assertTrue(rows.next());
+            assertEquals(0, rows.getLong(1));
         }
     }
 

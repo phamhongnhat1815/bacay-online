@@ -20,7 +20,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPasswordField;
 import javax.swing.border.EmptyBorder;
 
-public final class AdminMainFrame extends JFrame {
+public final class AdminMainFrame extends JFrame implements AdminView {
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -62,7 +62,6 @@ public final class AdminMainFrame extends JFrame {
 
         JPanel brand = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         brand.add(AdminTheme.label("♠ BA CÂY ADMIN", 20, AdminTheme.GOLD, true));
-        brand.add(AdminTheme.label("CONSOLE / SYSTEM MANAGEMENT", 9, AdminTheme.MUTED));
         header.add(brand, BorderLayout.WEST);
 
         JPanel navBar = AdminTheme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
@@ -133,8 +132,12 @@ public final class AdminMainFrame extends JFrame {
     public void showAuthScreen() {
         rootLayout.show(rootPanel, "AUTH");
         adminInfoLabel.setText("");
-        authPanel.clearPassword();
-        authPanel.setBusy(false);
+        authPanel.reset();
+        dashboardPanel.reset();
+        usersPanel.reset();
+        roomsPanel.updateRooms(java.util.List.of());
+        ledgerPanel.updatePage(com.game3cay.shared.model.PageResult.empty(0, 20));
+        setStatusMessage("Sẵn sàng", false);
     }
 
     public void showConsoleScreen(String adminName, String role) {
@@ -189,6 +192,9 @@ public final class AdminMainFrame extends JFrame {
     public AdminAuthPanel getAuthPanel() {
         return authPanel;
     }
+
+    @Override
+    public java.awt.Frame window() { return this; }
 
     public DashboardPanel getDashboardPanel() {
         return dashboardPanel;

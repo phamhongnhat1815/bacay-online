@@ -38,8 +38,8 @@ class RoomSafetyTest {
       }
       return users.get(id);
     }
-    public void adjustBalanceForAdmin(long a, long id, BigDecimal d, String r) {
-      users.compute(id, (key, u) -> new UserDTO(u.userId(), u.username(), u.displayName(),
+    public UserDTO adjustBalanceForAdmin(long a, long id, BigDecimal d, String r) {
+      return users.compute(id, (key, u) -> new UserDTO(u.userId(), u.username(), u.displayName(),
           u.email(), u.avatarUrl(), u.balance().add(d), u.status(), u.role(), 0, 0, 0));
     }
     public UserDTO register(String a,String b,String c,String d) { throw new UnsupportedOperationException(); }

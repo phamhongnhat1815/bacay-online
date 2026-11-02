@@ -1,6 +1,6 @@
 # Dữ liệu và giao dịch
 
-MySQL 8.0.16 trở lên, InnoDB, UTF-8. database/setup.sql là nguồn schema cài mới/nâng cấp; bản server/src/main/resources/schema.sql được đồng bộ để phân phối cùng JAR. Cần chạy toàn bộ script trước khi mở server. Script lặp lại được và giữ tài khoản/lịch sử hiện có.
+MySQL 8.0.16 trở lên, InnoDB, UTF-8. database/setup.sql là nguồn schema cài mới/nâng cấp; bản server/src/main/resources/schema.sql được đồng bộ để phân phối cùng JAR. Cần chạy toàn bộ script trước khi mở server. Script lặp lại được và giữ tài khoản, số dư và lịch sử ván hiện có. Khi nâng cấp, script xóa các bảng và lịch sử xin/cho điểm đã ngừng hỗ trợ.
 
 ## Schema
 
@@ -15,11 +15,8 @@ MySQL 8.0.16 trở lên, InnoDB, UTF-8. database/setup.sql là nguồn schema c�
 | play_pots / play_pot_players | Pot và các người đủ điều kiện nhận |
 | play_ledger | Sổ cái do chốt ván: balance_before + delta = balance_after |
 | admin_adjustments | Sổ cái điều chỉnh: mã ADJ, admin, tài khoản đích, delta, lý do và thời gian |
-| point_requests | Yêu cầu xin điểm, người xin/người được xin, operationId, thời hạn, trạng thái |
-| point_transfers | Biên nhận giao dịch; UNIQUE(sender_id,operation_id), UNIQUE(request_id), fingerprint |
-| point_transfer_entries | Hai vế trừ/cộng: delta, số dư trước/sau; cùng transaction với biên nhận |
 
-Migration schema_v3_point_transfers bổ sung ba bảng xin/cho điểm; các tài khoản và kết quả ván cũ được giữ nguyên. Sổ cái admin hợp nhất GAME, ADMIN, GIFT_SENT và GIFT_RECEIVED.
+Sổ cái admin hợp nhất GAME và ADMIN.
 
 Không có tài khoản admin dùng mật khẩu chung trong SQL. AdminBootstrap tạo mật khẩu riêng trước khi server bắt đầu nghe TCP; thông tin bootstrap được lưu trong tệp chỉ chủ sở hữu đọc được. Tài khoản admin tùy chỉnh không bị ghi đè.
 
@@ -27,7 +24,7 @@ Không có tài khoản admin dùng mật khẩu chung trong SQL. AdminBootstrap
 
 Engine quản lý số dư/vốn cược trong RAM trong lúc chơi. Kết quả được journal bền vững, rồi JdbcGameBUS lưu một transaction gồm: khóa users theo userId tăng dần; kiểm roundId/fingerprint; ghi kết quả, bài, cược, pot, ledger; cập nhật số dư và thống kê; commit. Tổng profit phải bằng 0. Retry cùng kết quả không cộng/trừ lần nữa; cùng roundId mà nội dung khác bị từ chối.
 
-Admin điều chỉnh qua RoomManager, phối hợp trạng thái active/pending/start để tránh sửa số dư đang làm nền cho engine. UserDAO dùng FOR UPDATE, không cho số dư âm và ghi adjustment cùng transaction. Lý do từ 1 đến 255 ký tự là bắt buộc. Trang sổ cái hợp nhất play_ledger, admin_adjustments và point_transfer_entries, có loại giao dịch, actor và lý do, sắp xếp ổn định.
+Admin điều chỉnh qua RoomManager, phối hợp trạng thái active/pending/start để tránh sửa số dư đang làm nền cho engine. UserDAO dùng FOR UPDATE, không cho số dư âm và ghi adjustment cùng transaction. Lý do từ 1 đến 255 ký tự là bắt buộc. Trang sổ cái hợp nhất play_ledger và admin_adjustments, có loại giao dịch, actor và lý do, sắp xếp ổn định.
 
 Kết quả CANCELLED là luồng hủy quản trị rõ ràng. Leave/disconnect thông thường xử lý như fold theo Game_Rules.md, không hủy ván miễn phí khi bài xấu.
 

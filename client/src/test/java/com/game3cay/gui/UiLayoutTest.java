@@ -46,10 +46,10 @@ class UiLayoutTest {
             for (int width : new int[]{1084, 1424}) {
                 LobbyPanel lobby = new LobbyPanel(); lobby.setRooms(rooms());
                 JPanel root = new JPanel(new BorderLayout());
-                var points = new Theme.Button("Yêu cầu điểm (99)", "plain");
+                var history = new Theme.Button("Lịch sử ván", "plain");
                 var header = new SessionHeader(Theme.label("Tên hiển thị dài của người chơi", 12, Theme.TEXT),
                         Theme.label("1.000.000 điểm", 20, Theme.GOLD), new Theme.Button("", "plain"),
-                        new Theme.Button("", "plain"), points, new Theme.Button("Hồ sơ", "plain"),
+                        history, new Theme.Button("Hồ sơ", "plain"),
                         new Theme.Button("Luật chơi", "plain"), new Theme.Button("Âm: Bật", "plain"),
                         new Theme.Button("Đăng xuất", "plain"));
                 root.add(header, BorderLayout.NORTH); root.add(lobby, BorderLayout.CENTER);
@@ -60,7 +60,7 @@ class UiLayoutTest {
                         assertEquals(166, card.getHeight());
                     }
                 }
-                Rectangle bounds = SwingUtilities.convertRectangle(points.getParent(), points.getBounds(), header);
+                Rectangle bounds = SwingUtilities.convertRectangle(history.getParent(), history.getBounds(), header);
                 assertTrue(header.contains(bounds.x + bounds.width - 1, bounds.y + bounds.height - 1), "Header navigation must fit");
             }
         });

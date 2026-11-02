@@ -2,6 +2,7 @@ package com.game3cay.admin.gui;
 
 import com.game3cay.shared.model.AdminBroadcastRequest;
 import com.game3cay.shared.model.AdminStatsSnapshot;
+import com.game3cay.shared.network.PacketIO;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -45,8 +46,7 @@ public final class DashboardPanel extends JPanel {
 
         JPanel topBar = AdminTheme.transparent(new BorderLayout());
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
-        titlePanel.add(AdminTheme.label("TỔNG QUAN HỆ THỐNG", 20, AdminTheme.GOLD, true));
-        titlePanel.add(AdminTheme.label("Theo dõi số liệu lưu hành và hoạt động máy chủ theo thời gian thực", 12, AdminTheme.MUTED));
+        titlePanel.add(AdminTheme.label("TỔNG QUAN", 20, AdminTheme.GOLD, true));
         topBar.add(titlePanel, BorderLayout.WEST);
 
         JPanel refreshBar = AdminTheme.transparent(new FlowLayout(FlowLayout.RIGHT, 10, 0));
@@ -65,7 +65,7 @@ public final class DashboardPanel extends JPanel {
         cardsGrid.add(AdminTheme.card("Số Ván Hôm Nay", todayRoundsLabel, "Ván đã hoàn tất từ 0h"));
         center.add(cardsGrid, BorderLayout.NORTH);
 
-        JPanel contentArea = AdminTheme.transparent(new BorderLayout(0, 16));
+        JPanel contentArea = AdminTheme.transparent(new BorderLayout());
 
         JPanel broadcastCard = new JPanel(new BorderLayout(0, 14)) {
             @Serial
@@ -87,7 +87,6 @@ public final class DashboardPanel extends JPanel {
 
         JPanel broadcastHeader = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         broadcastHeader.add(AdminTheme.label("PHÁT THÔNG BÁO TOÀN HỆ THỐNG", 15, AdminTheme.GOLD, true));
-        broadcastHeader.add(AdminTheme.label("Thông báo sẽ được gửi trực tiếp tới tất cả người chơi và hiển thị nổi bật trên bàn chơi", 12, AdminTheme.MUTED));
         broadcastCard.add(broadcastHeader, BorderLayout.NORTH);
 
         JPanel broadcastControls = AdminTheme.transparent(new BorderLayout(10, 0));
@@ -117,37 +116,6 @@ public final class DashboardPanel extends JPanel {
         broadcastCard.add(broadcastBody, BorderLayout.CENTER);
         contentArea.add(broadcastCard, BorderLayout.NORTH);
 
-        JPanel infoCard = new JPanel(new BorderLayout(0, 14)) {
-            @Serial
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                var g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(AdminTheme.PANEL);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
-                g2.setColor(AdminTheme.BORDER);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
-                g2.dispose();
-            }
-        };
-        infoCard.setOpaque(false);
-        infoCard.setBorder(new EmptyBorder(18, 22, 18, 22));
-
-        JPanel infoHeader = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
-        infoHeader.add(AdminTheme.label("THÔNG SỐ MÁY CHỦ & KIẾN TRÚC HỆ THỐNG", 15, AdminTheme.GOLD, true));
-        infoHeader.add(AdminTheme.label("Giao thức kết nối và lưu trữ dữ liệu", 12, AdminTheme.MUTED));
-        infoCard.add(infoHeader, BorderLayout.NORTH);
-
-        JPanel infoGrid = AdminTheme.transparent(new GridLayout(2, 2, 14, 10));
-        infoGrid.add(createTile("KẾT NỐI", "TCP/TLS theo cấu hình của máy chủ"));
-        infoGrid.add(createTile("CHUẨN GIAO THỨC", "Packet v" + com.game3cay.shared.network.Packet.VERSION + " · Giới hạn kích thước từng gói tin"));
-        infoGrid.add(createTile("CƠ SỞ DỮ LIỆU", "MySQL · Transaction và sổ cái kiểm toán"));
-        infoGrid.add(createTile("BẢO MẬT & PHÂN QUYỀN", "ObjectInputFilter · PBKDF2 · Phân quyền quản trị"));
-        infoCard.add(infoGrid, BorderLayout.CENTER);
-
-        contentArea.add(infoCard, BorderLayout.CENTER);
         center.add(contentArea, BorderLayout.CENTER);
         add(center, BorderLayout.CENTER);
 
@@ -161,33 +129,16 @@ public final class DashboardPanel extends JPanel {
         broadcastMessageField.addActionListener(e -> triggerBroadcast());
     }
 
-    private JPanel createTile(String title, String desc) {
-        JPanel tile = new JPanel(new BorderLayout(0, 4)) {
-            @Serial
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                var g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(AdminTheme.PANEL_ALT);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-                g2.setColor(AdminTheme.BORDER);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
-                g2.dispose();
-            }
-        };
-        tile.setOpaque(false);
-        tile.setBorder(new EmptyBorder(10, 14, 10, 14));
-        tile.add(AdminTheme.label(title, 11, AdminTheme.GOLD, true), BorderLayout.NORTH);
-        tile.add(AdminTheme.label(desc, 12, AdminTheme.TEXT), BorderLayout.CENTER);
-        return tile;
-    }
-
     private void triggerBroadcast() {
+        if (!broadcastButton.isEnabled()) return;
         String msg = broadcastMessageField.getText().trim();
         if (msg.isBlank()) {
             broadcastStatusLabel.setText("Vui lòng nhập nội dung thông báo trước khi phát.");
+            broadcastStatusLabel.setForeground(AdminTheme.RED);
+            return;
+        }
+        if (msg.length() > PacketIO.MAX_BROADCAST_TEXT) {
+            broadcastStatusLabel.setText("Thông báo tối đa " + PacketIO.MAX_BROADCAST_TEXT + " ký tự.");
             broadcastStatusLabel.setForeground(AdminTheme.RED);
             return;
         }
@@ -226,6 +177,20 @@ public final class DashboardPanel extends JPanel {
         broadcastButton.setEnabled(true);
         broadcastStatusLabel.setText("Gửi thông báo thất bại: " + reason);
         broadcastStatusLabel.setForeground(AdminTheme.RED);
+    }
+
+    public void reset() {
+        onlineUsersLabel.setText("0");
+        activeRoomsLabel.setText("0");
+        totalUsersLabel.setText("0");
+        totalBalanceLabel.setText("0");
+        todayRoundsLabel.setText("0");
+        lastUpdatedLabel.setText("Chưa cập nhật");
+        broadcastButton.setEnabled(true);
+        broadcastMessageField.setText("");
+        broadcastLevelCombo.setSelectedIndex(0);
+        broadcastStatusLabel.setText(" ");
+        broadcastStatusLabel.setForeground(AdminTheme.MUTED);
     }
 
     public void setOnRefresh(Runnable callback) {

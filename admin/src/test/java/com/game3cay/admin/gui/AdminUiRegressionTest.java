@@ -8,6 +8,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import javax.swing.JComponent;
 import javax.swing.JTable;
+import javax.swing.JButton;
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.plaf.basic.BasicHTML;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,103 @@ class AdminUiRegressionTest {
             assertEquals("admin", table.getValueAt(0, 8));
             assertEquals("Refund", table.getValueAt(0, 9));
         });
+    }
+
+    @Test void pressingEnterCannotBroadcastAgainWhileTheFirstRequestIsPending() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            DashboardPanel panel = new DashboardPanel();
+            var sent = new java.util.concurrent.atomic.AtomicInteger();
+            panel.setOnBroadcast(request -> sent.incrementAndGet());
+            JTextField message = findComponent(panel, JTextField.class);
+            message.setText("Thông báo thử nghiệm");
+            message.postActionEvent();
+            message.postActionEvent();
+            assertEquals(1, sent.get(), "Enter must respect the disabled send button");
+            panel.broadcastFailed("Mất kết nối");
+            message.postActionEvent();
+            assertEquals(2, sent.get(), "A completed failure must let the admin retry");
+            panel.reset();
+            assertEquals("", message.getText());
+            message.setText("Thông báo của phiên mới");
+            message.postActionEvent();
+            assertEquals(3, sent.get(), "A new login must not inherit a disabled send button");
+        });
+    }
+
+    @Test void loginEnterCannotStartAnotherSessionWhileConnecting() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AdminAuthPanel panel = new AdminAuthPanel();
+            var attempts = new java.util.concurrent.atomic.AtomicInteger();
+            panel.setOnLogin(credentials -> {
+                attempts.incrementAndGet();
+                java.util.Arrays.fill(credentials.password(), '\0');
+            });
+            var password = findComponent(panel, javax.swing.JPasswordField.class);
+            password.setText("password123");
+            password.postActionEvent();
+            password.postActionEvent();
+            assertEquals(1, attempts.get());
+            panel.showError("Cho phép thử lại");
+            password.setText("password123");
+            password.postActionEvent();
+            assertEquals(2, attempts.get());
+        });
+    }
+
+    @Test void oversizedBroadcastIsRejectedBeforeItStartsARequest() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            DashboardPanel panel = new DashboardPanel();
+            var sent = new java.util.concurrent.atomic.AtomicInteger();
+            panel.setOnBroadcast(request -> sent.incrementAndGet());
+            var message = findComponent(panel, JTextField.class);
+            message.setText("x".repeat(501));
+            message.postActionEvent();
+            assertEquals(0, sent.get());
+            assertTrue(findButtons(panel).stream().allMatch(JButton::isEnabled));
+            message.setText("x".repeat(500));
+            message.postActionEvent();
+            assertEquals(1, sent.get());
+        });
+    }
+
+    @Test void resettingUsersClearsOldSessionDataWithoutIssuingASearch() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            UsersPanel panel = new UsersPanel();
+            var searches = new java.util.concurrent.atomic.AtomicInteger();
+            panel.setOnSearch(request -> searches.incrementAndGet());
+            findComponent(panel, JTextField.class).setText("old account");
+            findComponent(panel, javax.swing.JComboBox.class).setSelectedItem("BLOCKED");
+            panel.setActionsBusy(true);
+            int beforeReset = searches.get();
+            panel.reset();
+            assertEquals(beforeReset, searches.get(), "Reset must not queue requests for a closed session");
+            assertEquals("", findComponent(panel, JTextField.class).getText());
+            assertEquals("Tất cả", findComponent(panel, javax.swing.JComboBox.class).getSelectedItem());
+            assertEquals(0, findTable(panel).getRowCount());
+            assertEquals(0, panel.getCurrentPage());
+            assertTrue(findButtons(panel).stream().filter(button -> button.getText().equals("CỘNG / TRỪ ĐIỂM")
+                    || button.getText().equals("KHÓA / MỞ KHÓA")).allMatch(JButton::isEnabled));
+        });
+    }
+
+    private static List<JButton> findButtons(Container root) {
+        java.util.ArrayList<JButton> result = new java.util.ArrayList<>();
+        for (Component child : root.getComponents()) {
+            if (child instanceof JButton button) result.add(button);
+            if (child instanceof Container nested) result.addAll(findButtons(nested));
+        }
+        return result;
+    }
+
+    private static <T extends Component> T findComponent(Container root, Class<T> type) {
+        for (Component child : root.getComponents()) {
+            if (type.isInstance(child)) return type.cast(child);
+            if (child instanceof Container nested) {
+                T result = findComponent(nested, type);
+                if (result != null) return result;
+            }
+        }
+        return null;
     }
 
     private static JTable findTable(Container container) {

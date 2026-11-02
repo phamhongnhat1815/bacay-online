@@ -69,6 +69,7 @@ public final class UsersPanel extends JPanel {
 
     private int currentPage = 0;
     private int totalPages = 0;
+    private boolean resetting;
 
     private Consumer<AdminUserFilterRequest> onSearchCallback;
     private Consumer<AdminLockUserRequest> onLockCallback;
@@ -179,7 +180,7 @@ public final class UsersPanel extends JPanel {
     }
 
     private void executeSearch(int page) {
-        if (onSearchCallback == null) {
+        if (resetting || onSearchCallback == null) {
             return;
         }
         String q = searchField.getText().trim();
@@ -213,6 +214,7 @@ public final class UsersPanel extends JPanel {
         );
 
         if (opt == JOptionPane.YES_OPTION && onLockCallback != null) {
+            setActionsBusy(true);
             onLockCallback.accept(new AdminLockUserRequest(user.userId(), willBlock));
         }
     }
@@ -243,18 +245,24 @@ public final class UsersPanel extends JPanel {
         if (opt == JOptionPane.OK_OPTION) {
             try {
                 BigDecimal delta = new BigDecimal(amountField.getText().trim());
-                if (delta.signum() == 0 || delta.scale() > 2) {
+                if (delta.signum() == 0 || delta.scale() < 0 || delta.scale() > 2 || delta.precision() > 15) {
                     throw new NumberFormatException();
                 }
                 if (user.balance().add(delta).signum() < 0) {
                     JOptionPane.showMessageDialog(this, "Số dư sau điều chỉnh không thể âm.", "Lỗi", JOptionPane.ERROR_MESSAGE);
                     return;
                 }
+                String reason = reasonField.getText().trim();
+                if (reason.isBlank() || reason.length() > 255) {
+                    JOptionPane.showMessageDialog(this, "Lý do điều chỉnh cần từ 1 đến 255 ký tự.", "Lỗi", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
                 if (onAdjustCallback != null) {
-                    onAdjustCallback.accept(new AdminAdjustBalanceRequest(user.userId(), delta, reasonField.getText().trim()));
+                    setActionsBusy(true);
+                    onAdjustCallback.accept(new AdminAdjustBalanceRequest(user.userId(), delta, reason));
                 }
             } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Vui lòng nhập số hợp lệ, tối đa 2 chữ số thập phân.", "Lỗi", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Nhập số thập phân hợp lệ, tối đa 15 chữ số và 2 chữ số thập phân.", "Lỗi", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -305,5 +313,22 @@ public final class UsersPanel extends JPanel {
 
     public int getCurrentPage() {
         return currentPage;
+    }
+
+    public void setActionsBusy(boolean busy) {
+        toggleLockButton.setEnabled(!busy);
+        adjustBalanceButton.setEnabled(!busy);
+    }
+
+    public void reset() {
+        resetting = true;
+        try {
+            searchField.setText("");
+            statusFilterCombo.setSelectedIndex(0);
+            setActionsBusy(false);
+            updatePage(PageResult.empty(0, 20));
+        } finally {
+            resetting = false;
+        }
     }
 }

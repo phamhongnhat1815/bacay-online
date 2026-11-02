@@ -223,7 +223,7 @@ public final class JdbcUserBUS implements UserBUS {
     }
 
     @Override
-    public void adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason)
+    public UserDTO adjustBalanceForAdmin(long adminId, long targetUserId, BigDecimal delta, String reason)
             throws BUSException {
         if (adminId <= 0 || targetUserId <= 0 || delta == null || delta.signum() == 0
                 || delta.precision() > 15 || delta.scale() < 0 || delta.scale() > 2) {
@@ -233,7 +233,7 @@ public final class JdbcUserBUS implements UserBUS {
             throw invalid("Lý do điều chỉnh cần từ 1 đến 255 ký tự");
         }
         try {
-            users.adjustUserBalance(adminId, targetUserId, delta, reason.trim());
+            return users.adjustUserBalance(adminId, targetUserId, delta, reason.trim());
         } catch (SQLException e) {
             throw databaseError(e);
         }

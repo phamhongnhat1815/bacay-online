@@ -2,11 +2,11 @@
 
 Ứng dụng nhiều người chơi dùng Java 21, Swing, TCP/TLS và MySQL 8.0.16 trở lên. Maven có bốn module: `shared` (DTO, luật bài thuần, protocol), `server` (ván bài/JDBC), `client` (người chơi) và `admin` (quản trị).
 
-Các bản sửa giữ bộ thư viện chạy ứng dụng như ban đầu: JDBC dùng `DriverManager` và MySQL Connector/J; TLS/JSSE, logging JUL và giới hạn đồng thời dùng sẵn trong JDK. Không thêm thư viện connection pool hoặc logging bên ngoài. Packet v4 bổ sung xin/cho điểm trên giao thức có giới hạn kích thước; cần cập nhật đồng bộ server, client và admin.
+Các bản sửa giữ bộ thư viện chạy ứng dụng như ban đầu: JDBC dùng `DriverManager` và MySQL Connector/J; TLS/JSSE, logging JUL và giới hạn đồng thời dùng sẵn trong JDK. Không thêm thư viện connection pool hoặc logging bên ngoài. Giao thức Packet có giới hạn kích thước; cần cập nhật đồng bộ server, client và admin.
 
 ## Cài đặt và chạy trên Windows
 
-1. Cài JDK 21 và MySQL. Chạy **toàn bộ** `database/setup.sql` trong MySQL Workbench hoặc mysql CLI. Script giữ tài khoản/lịch sử cũ, thêm migration cần thiết và không cài mật khẩu admin chung.
+1. Cài JDK 21 và MySQL. Chạy **toàn bộ** `database/setup.sql` trong MySQL Workbench hoặc mysql CLI. Script giữ tài khoản, số dư và lịch sử ván, thêm migration cần thiết và không cài mật khẩu admin chung. Khi nâng cấp, script xóa các bảng và lịch sử xin/cho điểm đã ngừng hỗ trợ.
 2. Chạy `Build.cmd` để biên dịch, kiểm thử và đóng gói vào `dist/`. Lần đầu cần mạng để Maven tải dependency.
 3. Chạy `Start-Server.cmd`; nhập mật khẩu MySQL nếu môi trường chưa cấu hình. Có thể chỉ định `-DbUser bacay_app -DbPassword ...`; nên dùng biến môi trường để tránh lưu mật khẩu trong lịch sử lệnh.
 4. Lần chạy đầu, server tạo tài khoản `admin` với mật khẩu ngẫu nhiên riêng cho bản cài. Đường dẫn tệp bootstrap được thông báo trong log; mặc định là `dist/data/admin-bootstrap.properties`. Tệp chỉ cấp quyền cho chủ sở hữu. Mật khẩu không được ghi vào log. Có thể cung cấp `BACAY_ADMIN_PASSWORD` (16–128 ký tự) khi bootstrap.
@@ -54,17 +54,13 @@ Các giới hạn kết nối, heartbeat và lượt chơi có trong `server.pro
 
 ## Luật và độ bền dữ liệu
 
-Sảnh chơi hỗ trợ tìm số bàn, lọc bàn trống/người đang chờ và **Chơi ngay**. Bố cục tự đổi số cột theo cửa sổ. Thanh đầu có Xếp hạng, Lịch sử ván và Xin / Cho điểm; **•••** mở Luật chơi, Âm thanh và Đăng xuất. Trong bàn, trò chuyện và Điểm bạn bè nằm ở hai khối riêng. Giao diện vẫn dùng Java Swing/Java2D, không bổ sung thư viện.
+Sảnh chơi hỗ trợ tìm số bàn, lọc bàn trống/người đang chờ và **Chơi ngay**. Bố cục tự đổi số cột theo cửa sổ. Thanh đầu có Xếp hạng và Lịch sử ván; **•••** mở Luật chơi, Âm thanh và Đăng xuất. Trong bàn có khung trò chuyện riêng. Giao diện vẫn dùng Java Swing/Java2D, không bổ sung thư viện.
 
 Ảnh lá bài, bàn chơi và nhân vật được thu nhỏ có lọc và vẽ theo độ phân giải màn hình, gồm HiDPI. Icon chip và vương miện vẽ bằng Java2D để giữ nét khi co giãn. Cache ảnh có giới hạn bộ nhớ.
 
 Bài mới chia được úp cả ba lá. Bấm **Nặn bài**, giữ phần dưới lá bài và kéo lên từ từ: mặt bài hé dần từ mép dưới theo độ kéo. Kéo đủ xa rồi thả để mở; kéo ngắn rồi thả thì lá bài trở lại trạng thái úp. Đóng hộp vẫn giữ các lá chưa mở ở trạng thái úp, mở lại tiếp tục tiến độ. **Mở hết** mở ngay cả ba lá. Khi đã mở hết, có thể **Ẩn bài / Xem lại**. Thời gian cược vẫn chạy khi nặn; **Trở về bàn** hoặc Esc để hành động.
 
 Chuẩn bị ván mới chỉ hiển thị ở thanh nhỏ dưới bàn, không có khung sẵn sàng che giữa bàn. Đủ người và đủ điều kiện, máy chủ tự đếm ngược; vào ván thì thanh này ẩn ngay. **Tạm nghỉ** hủy sẵn sàng và dừng đếm ngược của bàn; **Chơi tiếp** xác nhận tham gia với mức cược hiện tại. Không có checkbox/timer tự sẵn sàng ở client để tự bật lại sau khi bạn đã chọn nghỉ.
-
-Trong bàn chờ, dùng **Xin điểm / Cho điểm** để chọn một người cùng bàn, nhập số điểm và lời nhắn. Nút **Xin / Cho điểm** ở thanh phiên mở hộp thư và lịch sử: người được xin có thể cho điểm hoặc từ chối; người xin được hủy. Yêu cầu tự hết hạn sau 2 phút. Khi cho điểm thành công, hai người bấm **Chơi tiếp** để xác nhận tham gia lại.
-
-Mặc định người cho cần hoàn tất ít nhất 3 ván, tối đa 2.000 điểm/lần và tổng 2.000 điểm trong 24 giờ; mỗi người gửi tối đa 3 yêu cầu/phút, mỗi cặp chỉ có một yêu cầu đang chờ. Các giá trị gift.* trong server.properties có thể ghi đè bằng Java system properties. Đây là giới hạn giảm lạm dụng điểm tặng tài khoản mới, không phải cơ chế chống tạo tài khoản phụ hoàn toàn. Xem [chi tiết xin/cho điểm](docs/Point_Transfers.md).
 
 Xếp hạng Sáp > Liêng > Bồ đội > Điểm. Liêng cùng cấp so chất lá cao nhất; A-2-3 dùng lá 3, Q-K-A dùng lá A. Điểm được tính tổng modulo 10, nên 0 là 0 điểm. Xem `Game_Rules.md`.
 

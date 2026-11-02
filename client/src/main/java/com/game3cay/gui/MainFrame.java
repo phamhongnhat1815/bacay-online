@@ -32,7 +32,7 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-public final class MainFrame extends JFrame {
+public final class MainFrame extends JFrame implements ClientView {
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -56,8 +56,6 @@ public final class MainFrame extends JFrame {
     private final Theme.Button logout = new Theme.Button("Đăng xuất", "plain");
     private final Theme.Button sound = new Theme.Button("Âm thanh: Bật", "plain");
     private final Theme.Button help = new Theme.Button("Luật chơi", "plain");
-    private final Theme.Button pointRequests = new Theme.Button("Xin / Cho điểm", "plain");
-    private BigDecimal balanceValue = BigDecimal.ZERO;
 
     private final Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
     private String host = System.getProperty(
@@ -91,7 +89,7 @@ public final class MainFrame extends JFrame {
         };
         session.setOpaque(true);
 
-        var header = new SessionHeader(account, balance, leaderboard, history, pointRequests, profile, help, sound, logout);
+        var header = new SessionHeader(account, balance, leaderboard, history, profile, help, sound, logout);
         session.add(header, BorderLayout.NORTH);
 
         body.add(lobby, "LOBBY");
@@ -234,12 +232,6 @@ public final class MainFrame extends JFrame {
         leaderboard.addActionListener(e -> r.run());
     }
 
-    public void onPointRequests(Runnable action) { pointRequests.addActionListener(e -> action.run()); }
-    public void pointRequestCount(int count) {
-        pointRequests.setText(count == 0 ? "Xin / Cho điểm" : "Yêu cầu điểm (" + count + ")");
-        room.pointRequestCount(count);
-    }
-
     public void onChangePassword(Consumer<ChangePasswordRequest> action) {
         this.passwordAction = action;
     }
@@ -255,8 +247,6 @@ public final class MainFrame extends JFrame {
     public void showSignedOut() {
         this.signedIn = false;
         account.setText("");
-        pointRequestCount(0);
-        pointRequests.setEnabled(false);
         lobby.setRooms(List.of());
         room.clear();
         clearPasswords();
@@ -268,17 +258,13 @@ public final class MainFrame extends JFrame {
         this.signedIn = true;
         account.setText(name);
         account.setToolTipText(name + " · Tài khoản #" + id);
-        pointRequests.setEnabled(true);
         screens.show(root, "SESSION");
     }
 
     public void setBalance(BigDecimal value) {
-        balanceValue = value == null ? BigDecimal.ZERO : value;
         balance.setText(Theme.points(value) + " điểm");
         balance.setToolTipText("Số dư: " + Theme.points(value) + " điểm");
     }
-
-    public BigDecimal balanceValue() { return balanceValue; }
 
     public void showLobby() {
         room.clear();
@@ -294,6 +280,11 @@ public final class MainFrame extends JFrame {
 
     public LobbyPanel lobby() {
         return lobby;
+    }
+
+    @Override
+    public JFrame ownerFrame() {
+        return this;
     }
 
     public RoomPanel room() {

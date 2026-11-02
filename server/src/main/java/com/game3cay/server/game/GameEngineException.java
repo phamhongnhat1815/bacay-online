@@ -1,8 +1,12 @@
 package com.game3cay.server.game;
 
 import com.game3cay.shared.network.ErrorCode;
+import java.io.Serial;
 
 public class GameEngineException extends Exception {
+  @Serial
+  private static final long serialVersionUID = 1L;
+
   private final ErrorCode errorCode;
 
   public GameEngineException(ErrorCode errorCode, String message) {

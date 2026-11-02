@@ -61,7 +61,6 @@ public final class RoomsPanel extends JPanel {
 
         JPanel titlePanel = AdminTheme.transparent(new GridLayout(0, 1, 0, 2));
         titlePanel.add(AdminTheme.label("GIÁM SÁT 20 BÀN CHƠI CỐ ĐỊNH", 20, AdminTheme.GOLD, true));
-        titlePanel.add(AdminTheme.label("Cập nhật thời gian thực người chơi, mức cược và quỹ pot của từng bàn", 12, AdminTheme.MUTED));
         topToolbar.add(titlePanel, BorderLayout.WEST);
 
         JPanel actions = AdminTheme.transparent(new FlowLayout(FlowLayout.RIGHT, 10, 0));

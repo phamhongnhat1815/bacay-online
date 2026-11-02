@@ -2,7 +2,6 @@ package com.game3cay.gui;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
@@ -19,6 +18,7 @@ import java.awt.GradientPaint;
 import java.awt.LayoutManager;
 import java.awt.RenderingHints;
 import java.awt.Rectangle;
+import java.io.Serial;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -173,6 +173,9 @@ public final class Theme {
 
     /** A hint supplements the accessible name; it never replaces a field label. */
     public static final class HintField extends JTextField {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
         private final String hint;
         public HintField(String hint) {
             this.hint = hint;
@@ -192,7 +195,10 @@ public final class Theme {
         }
     }
 
-    public static class Button extends JButton {
+    public static final class Button extends JButton {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
         private final String colorVariant;
 
         public Button(String text, String colorVariant) {
@@ -253,7 +259,10 @@ public final class Theme {
         }
     }
 
-    public static class Glass extends JPanel {
+    public static final class Glass extends JPanel {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
         public Glass(LayoutManager layout) {
             super(layout);
             setOpaque(false);

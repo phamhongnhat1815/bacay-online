@@ -7,7 +7,7 @@ import javax.swing.border.EmptyBorder;
 /** A compact session header shared by the lobby and the game table. */
 final class SessionHeader extends JPanel {
     SessionHeader(JLabel account, JLabel balance, JButton leaderboard, JButton history,
-                  JButton points, JButton profile, JButton help, JButton sound, JButton logout) {
+                  JButton profile, JButton help, JButton sound, JButton logout) {
         super(new BorderLayout(24, 0));
         setBackground(Theme.PANEL);
         setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.LINE),
@@ -23,8 +23,8 @@ final class SessionHeader extends JPanel {
         var navigation = Theme.transparent(new FlowLayout(FlowLayout.LEFT, 8, 5));
         leaderboard.setText("Xếp hạng");
         history.setText("Lịch sử ván");
-        for (JButton button : new JButton[]{leaderboard, history, points}) {
-            button.setPreferredSize(new Dimension(button == points ? 160 : 110, 40));
+        for (JButton button : new JButton[]{leaderboard, history}) {
+            button.setPreferredSize(new Dimension(110, 40));
             button.setFont(Theme.font(13, true));
             navigation.add(button);
         }

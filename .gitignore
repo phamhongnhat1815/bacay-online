@@ -21,8 +21,6 @@
 # Công cụ chạy thử trên máy cá nhân
 /local-dev/
 
-# Kết quả build Maven
-**/target/
 # Runtime and packaged outputs
 dist/
 data/

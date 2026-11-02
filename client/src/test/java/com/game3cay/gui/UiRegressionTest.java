@@ -44,6 +44,36 @@ class UiRegressionTest {
         });
     }
 
+    @Test void invalidManualRaiseStaysInTheUiInsteadOfReachingTheSocket() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            GamePanel panel = new GamePanel();
+            var sent = new java.util.ArrayList<GameActionRequest>();
+            try {
+                panel.start("raise-input", 1);
+                panel.mine(new PlayerStateSnapshot("raise-input", List.of(new Card(Rank.ACE, Suit.RO),
+                        new Card(Rank.TWO, Suit.CO), new Card(Rank.THREE, Suit.BICH)),
+                        new BigDecimal("990"), BigDecimal.TEN, false, false, 1));
+                panel.bets(new BetStateSnapshot("raise-input", 1L, BigDecimal.TEN,
+                        new BigDecimal("20"), List.of(), List.of(), 1));
+                panel.game(new GameStateSnapshot("raise-input", "BETTING", 1L, List.of(1L, 2L), 0, 1));
+                panel.onAction(sent::add);
+                panel.setActionsEnabled(true);
+                var amount = UiLayoutTest.components(panel, javax.swing.JTextField.class).getFirst();
+                var raise = UiLayoutTest.button(panel, "Tố đến");
+                assertTrue(raise.isEnabled());
+                for (String invalid : List.of("1E2", "0", "NaN", "20.001", "1000000000000000")) {
+                    amount.setText(invalid);
+                    raise.doClick(0);
+                    assertTrue(sent.isEmpty(), "Invalid raise reached network callback: " + invalid);
+                }
+                amount.setText("100");
+                raise.doClick(0);
+                assertEquals(1, sent.size());
+                assertEquals(new BigDecimal("100"), sent.getFirst().raiseTo());
+            } finally { panel.clear(); }
+        });
+    }
+
     @Test void squeezeUsesServerHandClassificationAndZeroStaysZero() {
         assertTrue(CardSqueezeDialog.evaluateHandTitle(List.of(
                 new Card(Rank.JACK, Suit.RO), new Card(Rank.QUEEN, Suit.CO), new Card(Rank.KING, Suit.BICH))).contains("LIÊNG"));

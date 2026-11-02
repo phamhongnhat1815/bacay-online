@@ -144,7 +144,7 @@ flowchart TD
 ### 4.5. Chuẩn Bị Ván Kế Tiếp
 - Bàn tự đếm ngược khi đủ người sẵn sàng và đủ điều kiện. Thời gian chờ nằm ở thanh dưới bàn, không che bài hoặc vị trí người chơi.
 - Trong lúc chờ, bấm **Tạm nghỉ** để hủy sẵn sàng và dừng đếm ngược. Bấm **Chơi tiếp** để xác nhận tham gia với mức cược hiện tại; chủ bàn có thể **Bắt đầu ngay** khi hợp lệ.
-- Thanh chuẩn bị ẩn khi bắt đầu ván. Sau khi đổi mức cược hoặc chuyển điểm, người bị hủy sẵn sàng cần bấm **Chơi tiếp** để xác nhận lại.
+- Thanh chuẩn bị ẩn khi bắt đầu ván. Sau khi đổi mức cược, người bị hủy sẵn sàng cần bấm **Chơi tiếp** để xác nhận lại.
 
 ---
 

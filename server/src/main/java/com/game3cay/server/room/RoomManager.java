@@ -3,7 +3,6 @@ package com.game3cay.server.room;
 import com.game3cay.server.bus.BUSException;
 import com.game3cay.server.bus.UserBUS;
 import com.game3cay.server.bus.UserDTO;
-import com.game3cay.server.bus.PointTransferOutcome;
 import com.game3cay.server.game.CompletedRound;
 import com.game3cay.server.game.DefaultGameEngine;
 import com.game3cay.server.game.GameEngine;
@@ -24,10 +23,7 @@ import com.game3cay.shared.model.GameStartInfo;
 import com.game3cay.shared.model.Hand;
 import com.game3cay.shared.model.JoinRoomRequest;
 import com.game3cay.shared.model.PlayAgainPrompt;
-import com.game3cay.shared.model.PointBalanceUpdate;
-import com.game3cay.shared.model.PointRequestItem;
-import com.game3cay.shared.model.PointTransferReceipt;
-import com.game3cay.shared.model.RoomChatEvent;
+import com.game3cay.shared.model.ProfileResult;
 import com.game3cay.shared.model.RoomSnapshot;
 import com.game3cay.shared.model.RoomSummary;
 import com.game3cay.shared.model.RoundResult;
@@ -88,7 +84,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
         UserDTO user;
         final int seat;
         boolean ready;
-        long balanceRevision;
+        long readinessRevision;
 
         Member(UserDTO user, int seat) {
             this.user = user;
@@ -149,122 +145,6 @@ public final class RoomManager implements RoomService, AutoCloseable {
         return membership.containsKey(userId);
     }
 
-    @FunctionalInterface
-    public interface PointTransferWork {
-        PointTransferOutcome execute(long roomId) throws BUSException;
-    }
-
-    /** Validates the relationship at the moment an operation is authorized. */
-    public synchronized long sharedWaitingRoom(long actorId, long otherId) throws BUSException {
-        if (actorId <= 0 || otherId <= 0 || actorId == otherId) {
-            throw fail(ErrorCode.INVALID_REQUEST, "Cần chọn một người chơi khác để xin hoặc cho điểm");
-        }
-        Room room = requireUserRoom(actorId);
-        if (!Objects.equals(membership.get(otherId), room.id) || !room.members.containsKey(otherId)) {
-            throw fail(ErrorCode.NOT_IN_ROOM, "Hai người chơi phải ở cùng bàn chờ");
-        }
-        if (!"WAITING".equals(room.state) || room.roundId != null || room.journaling || room.autoStartQueued) {
-            throw fail(ErrorCode.INVALID_STATE, "Chỉ được xin hoặc cho điểm khi bàn đang chờ");
-        }
-        for (long id : List.of(actorId, otherId)) {
-            Member member = room.members.get(id);
-            if (member == null || !"USER".equalsIgnoreCase(member.user.role())
-                    || !"ACTIVE".equalsIgnoreCase(member.user.status())) {
-                throw fail(ErrorCode.FORBIDDEN, "Chỉ người chơi có tài khoản hoạt động được xin hoặc cho điểm");
-            }
-            ensureNoPendingResult(id);
-            if (startingUsers.contains(id)) {
-                throw fail(ErrorCode.INVALID_STATE, "Người chơi đang bắt đầu ván; vui lòng thử lại sau");
-            }
-        }
-        return room.id;
-    }
-
-    /** Reserves both balances before JDBC, without holding the room monitor during DB I/O. */
-    public PointTransferReceipt transferPoints(long senderId, long recipientId, long expectedRoomId,
-                                               PointTransferWork work) throws BUSException {
-        Objects.requireNonNull(work, "work không được null");
-        if (expectedRoomId < 0) throw fail(ErrorCode.INVALID_REQUEST, "Mã bàn không hợp lệ");
-        boolean reserved = false;
-        Set<Long> affectedRooms = new HashSet<>();
-        try {
-            long roomId;
-            synchronized (this) {
-                roomId = sharedWaitingRoom(senderId, recipientId);
-                if (expectedRoomId > 0 && expectedRoomId != roomId) {
-                    throw fail(ErrorCode.INVALID_STATE, "Yêu cầu thuộc bàn khác; hai người cần trở lại đúng bàn chờ");
-                }
-                adjustingUsers.add(senderId);
-                adjustingUsers.add(recipientId);
-                reserved = true;
-                affectedRooms.add(roomId);
-                Room room = rooms.get(roomId);
-                room.autoStartDeadlineNanos = 0;
-                room.version++;
-                notifyRoomUpdated(room);
-            }
-
-            PointTransferOutcome outcome = Objects.requireNonNull(work.execute(roomId), "Kết quả chuyển điểm không được null");
-            PointTransferReceipt receipt = Objects.requireNonNull(outcome.receipt(), "Biên nhận không được null");
-            if (receipt.senderId() != senderId || receipt.recipientId() != recipientId) {
-                throw new IllegalStateException("Biên nhận chuyển điểm không khớp người tham gia");
-            }
-            if (outcome.created()) {
-                synchronized (this) {
-                    applyPointBalance(senderId, outcome.senderBalance(), affectedRooms);
-                    applyPointBalance(recipientId, outcome.recipientBalance(), affectedRooms);
-                    // Queue the private balances before releasing reservations; a later game snapshot
-                    // or another transfer must not overtake this committed balance on either socket.
-                    sendPrivatePacket(senderId, PacketType.BALANCE_UPDATED,
-                            new PointBalanceUpdate(senderId, outcome.senderBalance(), receipt.transferId()));
-                    sendPrivatePacket(recipientId, PacketType.BALANCE_UPDATED,
-                            new PointBalanceUpdate(recipientId, outcome.recipientBalance(), receipt.transferId()));
-                }
-            }
-            return receipt;
-        } finally {
-            if (reserved) {
-                synchronized (this) {
-                    adjustingUsers.remove(senderId);
-                    adjustingUsers.remove(recipientId);
-                    Long senderRoom = membership.get(senderId);
-                    Long recipientRoom = membership.get(recipientId);
-                    if (senderRoom != null) affectedRooms.add(senderRoom);
-                    if (recipientRoom != null) affectedRooms.add(recipientRoom);
-                    for (long roomId : affectedRooms) {
-                        Room room = rooms.get(roomId);
-                        if (room != null) {
-                            checkAndStartAutoCountdown(room);
-                            room.version++;
-                            notifyRoomUpdated(room);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private void applyPointBalance(long userId, BigDecimal balance, Set<Long> affectedRooms) {
-        if (balance == null || balance.signum() < 0) throw new IllegalStateException("Số dư chuyển điểm không hợp lệ");
-        Long roomId = membership.get(userId);
-        if (roomId == null) return; // Disconnect/leave may complete while the authorized DB transaction runs.
-        Room room = rooms.get(roomId);
-        Member member = room == null ? null : room.members.get(userId);
-        if (member == null) return;
-        UserDTO user = member.user;
-        member.user = new UserDTO(user.userId(), user.username(), user.displayName(), user.email(),
-                user.avatarUrl(), balance, user.status(), user.role(), user.totalGames(), user.totalWins(), user.totalLosses());
-        member.balanceRevision++;
-        member.ready = false;
-        affectedRooms.add(roomId);
-    }
-
-    public synchronized void notifyPointRequest(PointRequestItem item) {
-        Objects.requireNonNull(item, "item không được null");
-        events.packet(Packet.serverPush(PacketType.POINT_REQUEST_UPDATED, item),
-                List.of(item.requesterId(), item.targetUserId()));
-    }
-
     private void ensureNoPendingResult(long userId) throws BUSException {
         if (adjustingUsers.contains(userId)) {
             throw fail(ErrorCode.INVALID_STATE, "Số dư đang được điều chỉnh; vui lòng thử lại");
@@ -274,6 +154,15 @@ public final class RoomManager implements RoomService, AutoCloseable {
         }
         if (persistence != null && persistence.pendingFor(userId)) {
             throw fail(ErrorCode.INVALID_STATE, "Kết quả ván trước đang được lưu vào CSDL; vui lòng thử lại sau vài giây");
+        }
+    }
+
+    private static void ensureActiveUser(UserDTO user) throws BUSException {
+        if ("BLOCKED".equalsIgnoreCase(user.status())) {
+            throw fail(ErrorCode.USER_BLOCKED, "Tài khoản đã bị khóa; không thể tham gia ván bài");
+        }
+        if (!"ACTIVE".equalsIgnoreCase(user.status())) {
+            throw fail(ErrorCode.FORBIDDEN, "Tài khoản không ở trạng thái hoạt động");
         }
     }
 
@@ -291,8 +180,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
             adjustingUsers.add(targetUserId);
         }
         try {
-            users.adjustBalanceForAdmin(adminId, targetUserId, delta, reason);
-            UserDTO fresh = users.getProfile(targetUserId);
+            UserDTO fresh = users.adjustBalanceForAdmin(adminId, targetUserId, delta, reason);
             synchronized (this) {
                 Long roomId = membership.get(targetUserId);
                 if (roomId != null) {
@@ -300,13 +188,18 @@ public final class RoomManager implements RoomService, AutoCloseable {
                     Member member = room.members.get(targetUserId);
                     if (member != null) {
                         member.user = fresh;
-                        member.balanceRevision++;
+                        member.readinessRevision++;
                         member.ready = false;
                         room.version++;
                         checkAndStartAutoCountdown(room);
                         notifyRoomUpdated(room);
                     }
                 }
+                // Queue the committed balance before releasing the reservation, so a later
+                // game snapshot or another adjustment cannot be overtaken by this update.
+                sendPrivatePacket(targetUserId, PacketType.PROFILE_RESULT, new ProfileResult(
+                        fresh.userId(), fresh.username(), fresh.displayName(), fresh.email(), fresh.avatarUrl(),
+                        fresh.balance(), fresh.totalGames(), fresh.totalWins(), fresh.totalLosses()));
             }
         } finally {
             synchronized (this) {
@@ -344,7 +237,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
             Room room = rooms.get(request.roomId());
             if (room != null && room.members.containsKey(actor.userId())) {
                 Member m = room.members.get(actor.userId());
-                // Rejoin metadata may have been fetched before another handler committed a transfer.
+                // Rejoin metadata may have been fetched before an admin balance adjustment completed.
                 // The member balance is maintained by the room's committed balance operations.
                 m.user = new UserDTO(actor.userId(), actor.username(), actor.displayName(), actor.email(),
                         actor.avatarUrl(), m.user.balance(), actor.status(), actor.role(),
@@ -490,11 +383,11 @@ public final class RoomManager implements RoomService, AutoCloseable {
     @Override
     public RoomSnapshot setReady(long userId, boolean ready) throws BUSException {
         Member capturedMember;
-        long capturedBalanceRevision;
+        long capturedReadinessRevision;
         synchronized (this) {
             ensureNoPendingResult(userId);
             capturedMember = requireUserRoom(userId).members.get(userId);
-            capturedBalanceRevision = capturedMember.balanceRevision;
+            capturedReadinessRevision = capturedMember.readinessRevision;
         }
         UserDTO freshUser = (users == null) ? null : users.getProfile(userId);
 
@@ -506,12 +399,13 @@ public final class RoomManager implements RoomService, AutoCloseable {
             ensureNoPendingResult(userId);
 
             Member member = room.members.get(userId);
-            if (member != capturedMember || member.balanceRevision != capturedBalanceRevision) {
-                throw fail(ErrorCode.INVALID_STATE, "Số dư vừa thay đổi; vui lòng xác nhận sẵn sàng lại");
+            if (member != capturedMember || member.readinessRevision != capturedReadinessRevision) {
+                throw fail(ErrorCode.INVALID_STATE, "Bàn chơi hoặc số dư vừa thay đổi; vui lòng xác nhận sẵn sàng lại");
             }
             if (freshUser != null) {
                 member.user = freshUser;
             }
+            ensureActiveUser(member.user);
 
             if (member.user.balance().compareTo(room.settings.betAmount()) < 0) {
                 throw fail(ErrorCode.INVALID_BET_AMOUNT, "Bạn đang ở chế độ xem vì số dư không đủ mức cược cơ bản");
@@ -555,6 +449,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
 
         for (Member m : room.members.values()) {
             m.ready = false;
+            m.readinessRevision++;
         }
         room.autoStartDeadlineNanos = 0;
 
@@ -598,6 +493,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
         }
 
         for (Member m : eligibleMembers) {
+            ensureActiveUser(m.user);
             ensureNoPendingResult(m.user.userId());
             if (!m.ready) {
                 throw fail(ErrorCode.NOT_ALL_READY, "Còn người chơi chưa bấm sẵn sàng: " + m.user.displayName());
@@ -641,7 +537,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
 
                 for (Member m : room.members.values()) {
                     m.user = freshUsers.get(m.user.userId());
-                    m.balanceRevision++;
+                    m.readinessRevision++;
                 }
 
                 checkStart(userId);
@@ -795,7 +691,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
                         m.user = new UserDTO(u.userId(), u.username(), u.displayName(), u.email(),
                                 u.avatarUrl(), balance, u.status(), u.role(), u.totalGames(),
                                 u.totalWins(), u.totalLosses());
-                        m.balanceRevision++;
+                        m.readinessRevision++;
                     } catch (GameEngineException e) {
                         throw new IllegalStateException(e);
                     }
@@ -836,7 +732,8 @@ public final class RoomManager implements RoomService, AutoCloseable {
                 .filter(m -> m.user.balance().compareTo(room.settings.betAmount()) >= 0).toList();
         return eligible.size() >= room.settings.minPlayers() && eligible.stream().allMatch(m -> {
             long id = m.user.userId();
-            return m.ready && !activeRounds.containsKey(id) && !startingUsers.contains(id)
+            return m.ready && "ACTIVE".equalsIgnoreCase(m.user.status())
+                    && !activeRounds.containsKey(id) && !startingUsers.contains(id)
                     && !adjustingUsers.contains(id) && (persistence == null || !persistence.pendingFor(id));
         });
     }
@@ -1133,6 +1030,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
             r.afkUsers.clear();
             for (Member m : r.members.values()) {
                 m.ready = false;
+                m.readinessRevision++;
             }
             r.version++;
 
@@ -1178,6 +1076,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
         List<AdminLivePlayerHand> playerHands = new ArrayList<>();
         for (Member m : r.members.values()) {
             long uid = m.user.userId();
+            BigDecimal balance = m.user.balance();
             BigDecimal bet = BigDecimal.ZERO;
             String status = m.ready ? "READY" : "WAITING";
             List<Card> cards = List.of();
@@ -1187,6 +1086,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
                 try {
                     var playerState = engine.getPlayerSnapshot(r.roundId, uid);
                     if (playerState != null) {
+                        balance = playerState.myBalance();
                         bet = playerState.myCurrentBet();
                         if (playerState.folded()) {
                             status = "FOLDED";
@@ -1216,7 +1116,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
                     m.user.username(),
                     m.user.displayName(),
                     m.seat,
-                    m.user.balance(),
+                    balance,
                     bet,
                     status,
                     cards != null ? cards : List.of(),

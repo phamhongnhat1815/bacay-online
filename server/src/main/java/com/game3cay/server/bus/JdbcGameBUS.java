@@ -51,23 +51,17 @@ public final class JdbcGameBUS implements GameBUS {
                 "play_pot_players", "round_id,pot_no,user_id",
                 "play_ledger", "round_id,user_id,delta,balance_before,balance_after",
                 "admin_adjustments", "id,adjustment_id,admin_user_id,target_user_id,delta,balance_before,balance_after,reason,created_at"));
-        required.put("point_requests", "request_id,operation_id,payload_hash,requester_id,requester_name,target_id,target_name,room_id,amount,message,status,created_at,expires_at,transfer_id");
-        required.put("point_transfers", "transfer_id,operation_id,payload_hash,request_id,room_id,sender_id,sender_name,recipient_id,recipient_name,amount,message,committed_at");
-        required.put("point_transfer_entries", "transfer_id,user_id,delta,balance_before,balance_after");
         try (Connection conn = connections.open()) {
             for (var table : required.entrySet()) {
-                try (Statement stmt = conn.createStatement();
-                     ResultSet ignored = stmt.executeQuery("SELECT " + table.getValue() + " FROM " + table.getKey() + " WHERE 1=0")) {}
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.executeQuery("SELECT " + table.getValue() + " FROM " + table.getKey() + " WHERE 1=0").close();
+                }
             }
             try (Statement stmt = conn.createStatement();
                  ResultSet migration = stmt.executeQuery("SELECT name FROM app_migrations WHERE name='schema_v2_secure_admin'")) {
                 if (!migration.next()) throw new SQLException("Schema chưa cập nhật; hãy chạy database/setup.sql trước khi mở server");
             }
             roleColumn = true;
-            try (Statement stmt = conn.createStatement();
-                 ResultSet migration = stmt.executeQuery("SELECT name FROM app_migrations WHERE name='schema_v3_point_transfers'")) {
-                if (!migration.next()) throw new SQLException("Schema xin/cho điểm chưa cập nhật; hãy chạy database/setup.sql");
-            }
         }
     }
 

@@ -2,7 +2,6 @@ package com.game3cay.server;
 
 import com.game3cay.server.bus.JdbcGameBUS;
 import com.game3cay.server.bus.JdbcUserBUS;
-import com.game3cay.server.bus.JdbcPointTransferBUS;
 import com.game3cay.server.dal.ConnectionProvider;
 import com.game3cay.server.dal.DatabaseConfig;
 import com.game3cay.server.dal.AdminBootstrap;
@@ -59,7 +58,6 @@ public final class ServerApplication {
     private static void serve(int port, int maxConnections, ConnectionProvider connections) throws Exception {
         JdbcUserBUS userBus = new JdbcUserBUS(connections);
         JdbcGameBUS gameBus = new JdbcGameBUS(connections);
-        JdbcPointTransferBUS pointBus = new JdbcPointTransferBUS(connections);
 
         gameBus.checkSchema();
         Path adminCredentials = Path.of(System.getenv().getOrDefault("BACAY_ADMIN_CREDENTIAL_FILE", "data/admin-bootstrap.properties"));
@@ -160,7 +158,7 @@ public final class ServerApplication {
 
         try {
             while (!serverSocket.isClosed()) {
-                var handler = new ClientHandler(serverSocket.accept(), userBus, sessionRegistry, roomManager, gameBus, pointBus);
+                var handler = new ClientHandler(serverSocket.accept(), userBus, sessionRegistry, roomManager, gameBus);
                 activeHandlers.add(handler);
 
                 try {

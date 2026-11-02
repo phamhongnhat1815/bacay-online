@@ -182,7 +182,8 @@ public final class GamePanel extends JPanel {
         raise.addActionListener(e -> {
             try {
                 var raiseAmount = new BigDecimal(raiseTo.getText().trim());
-                if (raiseAmount.signum() <= 0 || raiseAmount.scale() > 2 || raiseAmount.precision() > 15) {
+                if (raiseAmount.signum() <= 0 || raiseAmount.scale() < 0
+                        || raiseAmount.scale() > 2 || raiseAmount.precision() > 15) {
                     throw new NumberFormatException();
                 }
                 if (bets != null && raiseAmount.compareTo(bets.currentHighBet()) <= 0) {
@@ -233,11 +234,16 @@ public final class GamePanel extends JPanel {
     }
 
     public void mine(PlayerStateSnapshot value) {
-        if (accepts(value.roundId()) && (mine == null || value.stateVersion() >= mine.stateVersion())) {
+        if (acceptsPlayerState(value)) {
             this.mine = value;
             table.mine(value);
             render();
         }
+    }
+
+    public boolean acceptsPlayerState(PlayerStateSnapshot value) {
+        return value != null && accepts(value.roundId())
+                && (mine == null || value.stateVersion() >= mine.stateVersion());
     }
 
     public void bets(BetStateSnapshot value) {

@@ -88,16 +88,6 @@ public final class UiPreview {
                 capture(partial, 684, 510, output.resolve("squeeze-one-open.png"));
                 squeezeState.revealAll();
                 capture(new CardSqueezePanel(squeezeCards, squeezeState, () -> {}, () -> {}), 684, 510, output.resolve("squeeze-complete.png"));
-                var points = new PointExchangeDialog(frame);
-                try {
-                    points.context(1, room("WAITING"), new BigDecimal("12500"), java.util.Set.of());
-                    points.requests(new PageResult<>(List.of(), 0, 20, 0, 0));
-                    capture(points.getContentPane(), 1006, 550, output.resolve("points.png"));
-                    long now = System.currentTimeMillis();
-                    points.requests(new PageResult<>(List.of(new PointRequestItem("preview-request", 2, "Minh Anh", 1, "Khánh", 3,
-                            new BigDecimal("100"), "Cho mình xin ít điểm chơi tiếp nhé", PointRequestStatus.PENDING, now, now + 120000, null)), 0, 20, 1, 1));
-                    capture(points.getContentPane(), 1006, 550, output.resolve("points-request.png"));
-                } finally { points.dispose(); }
             } catch (Exception e) { throw new RuntimeException(e); }
             finally { if (frame != null) frame.dispose(); }
         });

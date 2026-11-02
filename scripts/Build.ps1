@@ -33,6 +33,17 @@ try {
     Copy-Item .\README.md,.\Game_Rules.md $dist -Force
     $distDocs = Join-Path $dist 'docs'
     New-Item -ItemType Directory -Force $distDocs | Out-Null
-    Copy-Item .\docs\Architecture.md,.\docs\Protocol.md,.\docs\Database.md,.\docs\Screen_Data_Mapping.md,.\docs\Point_Transfers.md $distDocs -Force
+    # Keep packaged documentation aligned with the source document set.
+    $sourceDocs = @(Get-ChildItem -LiteralPath .\docs -Filter '*.md' -File)
+    $sourceDocNames = @($sourceDocs | ForEach-Object { $_.Name })
+    $resolvedDistDocs = [System.IO.Path]::GetFullPath($distDocs)
+    foreach ($previousDoc in Get-ChildItem -LiteralPath $resolvedDistDocs -Filter '*.md' -File) {
+        if ($previousDoc.Name -notin $sourceDocNames) {
+            $previousDocPath = [System.IO.Path]::GetFullPath($previousDoc.FullName)
+            if ([System.IO.Path]::GetDirectoryName($previousDocPath) -ne $resolvedDistDocs) { throw 'Duong dan tai lieu khong hop le.' }
+            Remove-Item -LiteralPath $previousDocPath -Force
+        }
+    }
+    foreach ($sourceDoc in $sourceDocs) { Copy-Item -LiteralPath $sourceDoc.FullName -Destination $distDocs -Force }
     Write-Host 'BUILD OK. Mo Start-Server.cmd / Start-Client.cmd / Start-Admin.cmd de su dung.'
 } finally { Pop-Location }
