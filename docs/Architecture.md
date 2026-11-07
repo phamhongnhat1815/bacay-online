@@ -4,11 +4,17 @@ Bốn module Maven dùng Java 21. shared chứa model Serializable, evaluator th
 
 Bộ thư viện chạy ứng dụng giữ như ban đầu. JDBC dùng DriverManager và MySQL Connector/J; TLS/JSSE, JUL, Semaphore và executor đều có sẵn trong JDK. Các thay đổi bảo mật giao thức không yêu cầu thêm framework hoặc thư viện runtime.
 
+Root `pom.xml` vừa tổng hợp reactor vừa là parent của cả bốn module. Java release, encoding, compiler/Surefire và phiên bản JUnit/shared được quản lý tập trung; MySQL Connector/J thuộc server, JUnit/H2 chỉ ở test scope. Hai module Swing giữ cấu hình headless riêng cho kiểm thử. Xem [quy trình kiểm thử](Testing.md) và [hướng dẫn chạy](../README.md).
+
 ## Luồng chính
 
 Client hoặc admin kết nối TLS và xác minh chứng chỉ máy chủ. PacketIO đọc frame có chiều dài giới hạn trước deserialization, lọc cấu trúc rồi validate payload. ClientHandler xác thực phiên, phân quyền và điều phối request. RoomManager quản lý 20 bàn cố định, membership, ready/countdown, active round và chốt kết quả. DefaultGameEngine xử lý bài, cược, fold, pot, kết quả; evaluator chung đảm bảo UI và máy chủ dùng cùng quy tắc.
 
 Các gói bài riêng chỉ được gửi đến đúng người chơi. Endpoint ADMIN_INSPECT_ROOM_REQ được bảo vệ bằng quyền ADMIN. Tài khoản quản trị không tham gia chơi. Mật khẩu đăng nhập được kiểm bằng PBKDF2WithHmacSHA256 có salt 16 byte, hiện 310.000 vòng; TLS bảo vệ mật khẩu khi truyền.
+
+`shared.game.HandEvaluator` là nguồn luật chung: Sáp hoặc Điểm, 0 modulo 10 được tính 10 điểm, Rô > Cơ > Chuồn > Bích và Át cao nhất khi so lá. Lớp cùng tên trong server chỉ giữ tên tương thích. Không xóa các enum J/Q/K, LIENG/BO_DOI vì dữ liệu lịch sử còn dùng; engine và preload asset chỉ chọn 40 lá đang chơi.
+
+DefaultGameEngine đánh giá mỗi tay bài một lần khi chia, lưu `Hand` bất biến trong trạng thái nội bộ của người chơi. Khi kết thúc, engine lần lượt tính các mức đóng góp/pot, xác định người nhận, chia đến đơn vị 0,01 điểm và tạo kết quả. Pot không có người còn quyền nhận được trả lại cho các người đóng góp ở mức đó. Xếp hạng, số dư và bài được công khai tuân theo [luật chơi](../Game_Rules.md); tay bài lưu nội bộ không tự trở thành dữ liệu công khai.
 
 ## Đồng thời và I/O
 
@@ -19,6 +25,8 @@ start() giữ monitor để kiểm trạng thái và reserve startingUsers, đ�
 Khi hoàn tất, RoomManager chụp CompletedRound và đánh dấu journaling dưới khóa; enqueue/fsync chạy ngoài khóa; chỉ khi journal thành công mới giải phóng active keys, phát kết quả và cleanup engine. Journal thất bại giữ trạng thái có thể retry. ResultPersistence có khóa journal riêng; pendingFor() không cần chờ disk I/O. Auto-start JDBC được điều phối ngoài tick monitor bằng executor; RoomManager.close() dừng/drain tác vụ khi shutdown.
 
 Server có giới hạn kết nối, sender queue giới hạn và heartbeat. Client có reader/sender/watchdog riêng; admin cũng có sender executor và timeout, không ghi socket đồng bộ từ EDT. Mọi cập nhật Swing trở về EDT. Reconnect có giới hạn và reset trạng thái theo snapshot server; phản hồi cũ không được cập nhật dialog soi bàn mới.
+
+AdminSocketClient tách xử lý PING/PONG khỏi phản hồi request và push giao diện. Request có deadline 10 giây, được gỡ khỏi pending khi hoàn tất; đóng kết nối dừng sender và hoàn tất các future đang chờ bằng lỗi. Thao tác close lặp không phát lại callback mất kết nối. SocketClient người chơi xử lý heartbeat trước khi chuyển packet tới listener.
 
 ## Kết quả bền vững
 

@@ -2,6 +2,8 @@
 
 Client và admin dùng Java Swing. Mọi cập nhật component chạy trên EDT; kết nối, ghi socket và chờ phản hồi chạy ngoài EDT. PacketIO.Input/Output dùng Packet v5; ứng dụng cũ dùng object stream trực tiếp không tương thích.
 
+Các test giao diện chạy headless qua cấu hình riêng trong POM client/admin; cấu hình Java/JUnit/plugin được kế thừa từ root. Xem [Testing.md](Testing.md) để chạy bộ kiểm thử và xuất preview offline.
+
 ## Client
 
 MainFrame dùng CardLayout cho AuthPanel, LobbyPanel và RoomPanel. ConnectionController điều phối requestId, pending request, timeout, reconnect và marshal sự kiện mạng về EDT. SocketClient có sender queue giới hạn, reader và heartbeat watchdog.
@@ -27,7 +29,7 @@ Client không còn checkbox, Preferences hoặc timer tự sẵn sàng trùng v�
 
 Theme thống nhất màu, font, khoảng cách, bảng dữ liệu, tab, trạng thái hover/focus/disabled. Nút và nền vẽ bằng Java2D có sẵn trong Swing, không thêm dependency. Điểm hiển thị theo định dạng Việt Nam; trường nhập thập phân dùng dấu chấm và không nhập dấu phân cách hàng nghìn.
 
-Nặn bài dùng evaluator chung của shared: J-Q-K là Liêng, tổng modulo 10 bằng 0 là 0 điểm. Các asset còn dùng được preload ngoài EDT; animation chỉ chạy khi cần và component đang hiển thị. UiLayoutTest kiểm tra lọc/chọn bàn, chiều rộng thẻ, thanh đầu và bàn chờ ở kích thước tối thiểu. UiPreview xuất ảnh offline các màn hình để kiểm tra trực quan, không kết nối máy chủ hoặc DB.
+Nặn bài dùng evaluator chung của shared: bộ bài 40 lá không có J/Q/K, chỉ phân loại Sáp hoặc Điểm; ba lá liên tiếp tính điểm thường, tổng modulo 10 bằng 0 là 10 điểm. So chất Rô > Cơ > Chuồn > Bích, trong cùng chất Át cao nhất. Enum/ảnh lá J/Q/K còn giữ cho dữ liệu cũ, nhưng không preload cho bộ bài hiện tại. Các asset còn dùng được preload ngoài EDT; animation chỉ chạy khi cần và component đang hiển thị. UiLayoutTest kiểm tra lọc/chọn bàn, chiều rộng thẻ, thanh đầu và bàn chờ ở kích thước tối thiểu. UiPreview xuất ảnh offline các màn hình để kiểm tra trực quan, không kết nối máy chủ hoặc DB.
 
 Khi chia bài, cả ba lá riêng của người chơi được úp. HandRevealState chỉ đổi khi người chơi chủ động nặn hoặc bấm Mở hết; PLAYER_STATE/GAME_UPDATED và START_GAME lặp cùng ván không tự lật bài. CardSqueezePanel cho giữ phần dưới lá rồi kéo lên: lưng bài trượt lên theo chuột, mặt bài hé từ mép dưới với viền giấy cuộn. Thả sau khi hé ít nhất 60% để mở; kéo ngắn thì phần hé thu lại. Kéo ngược xuống không làm mở bài. Có nút mở lá đang chọn/mở cả ba và phím mũi tên/Space. Phân loại bài chỉ hiển thị sau khi cả ba lá đã mở. Đóng hộp giữ tiến độ của ván đó; generation ngăn input cũ mở bài trong ván tiếp theo.
 
@@ -42,6 +44,8 @@ Reconnect có hạn số lần và deadline cho từng bước. Lỗi xác thự
 ## Admin
 
 AdminMainFrame gồm DashboardPanel, UsersPanel, RoomsPanel, LedgerPanel. AdminSocketClient dùng sender executor và deadline socket; việc trả CompletableFuture không đồng nghĩa được phép ghi socket trực tiếp trên EDT.
+
+Heartbeat PING/PONG được xử lý riêng trong lớp kết nối admin; chỉ lời chào và push nghiệp vụ được chuyển tới push listener. Request chờ tối đa 10 giây; hết hạn đóng phiên, còn đóng phiên chủ động hoặc do mất mạng làm thất bại toàn bộ future đang chờ. AdminSocketClientTest kiểm việc gọi từ EDT trả ngay, phản hồi được ghép đúng requestId, PONG giữ id heartbeat và callback mất kết nối chỉ chạy một lần khi close lặp.
 
 Phản hồi admin gắn với phiên đăng nhập và lần đọc của từng màn hình. Phản hồi tìm kiếm/phân trang cũ không thay kết quả mới; đăng xuất hoặc mất kết nối hủy phiên để các callback cũ không sửa giao diện lần đăng nhập tiếp theo. Sau khóa/điều chỉnh tài khoản, bộ lọc hiện tại được giữ và trang cuối được điều chỉnh nếu không còn kết quả. Thông báo admin được lưu trong chat của client; số dư điều chỉnh được cập nhật bằng push hồ sơ riêng.
 

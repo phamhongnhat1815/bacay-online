@@ -46,8 +46,8 @@ public final class UiPreview {
                     capture(frame.getContentPane(), width, height, output.resolve("countdown-" + width + ".png"));
                     frame.showRoom(room("PLAYING"), 1);
                     var game = frame.room().game(); game.start("preview", 1);
-                    game.mine(new PlayerStateSnapshot("preview", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.KING, Suit.CO),
-                            new Card(Rank.QUEEN, Suit.BICH)), new BigDecimal("12500"), BigDecimal.TEN, false, false, 1));
+                    game.mine(new PlayerStateSnapshot("preview", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.TEN, Suit.CO),
+                            new Card(Rank.NINE, Suit.BICH)), new BigDecimal("12500"), BigDecimal.TEN, false, false, 1));
                     game.bets(new BetStateSnapshot("preview", 1L, new BigDecimal("20"), new BigDecimal("90"), List.of(), List.of(), 1));
                     game.game(new GameStateSnapshot("preview", "BETTING", 1L, List.of(1L, 2L, 3L), 0, 1));
                     // Capture the settled hand, independently of machine speed during the deal animation.
@@ -65,7 +65,7 @@ public final class UiPreview {
                     frame.room().clear();
                 }
                 var squeezeState = new HandRevealState();
-                var squeezeCards = List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.KING, Suit.CO), new Card(Rank.QUEEN, Suit.BICH));
+                var squeezeCards = List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.TEN, Suit.CO), new Card(Rank.NINE, Suit.BICH));
                 var squeeze = new CardSqueezePanel(squeezeCards, squeezeState, () -> {}, () -> {});
                 squeeze.context("Đến lượt bạn · Còn 24 giây để cược", true);
                 capture(squeeze, 684, 510, output.resolve("squeeze-face-down.png"));

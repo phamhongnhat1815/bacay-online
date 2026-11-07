@@ -74,13 +74,13 @@ class UiRegressionTest {
         });
     }
 
-    @Test void squeezeUsesServerHandClassificationAndZeroStaysZero() {
-        assertTrue(CardSqueezeDialog.evaluateHandTitle(List.of(
-                new Card(Rank.JACK, Suit.RO), new Card(Rank.QUEEN, Suit.CO), new Card(Rank.KING, Suit.BICH))).contains("LIÊNG"));
-        String zero = CardSqueezeDialog.evaluateHandTitle(List.of(
-                new Card(Rank.TWO, Suit.RO), new Card(Rank.THREE, Suit.CO), new Card(Rank.FIVE, Suit.BICH)));
-        assertTrue(zero.contains("0 ĐIỂM"));
-        assertFalse(zero.contains("10 ĐIỂM"));
+    @Test void squeezeUsesPointsForSequencesAndShowsTenPoints() {
+        assertEquals("6 ĐIỂM", CardSqueezeDialog.evaluateHandTitle(List.of(
+                new Card(Rank.ACE, Suit.RO), new Card(Rank.TWO, Suit.CO), new Card(Rank.THREE, Suit.BICH))));
+        assertEquals("10 ĐIỂM", CardSqueezeDialog.evaluateHandTitle(List.of(
+                new Card(Rank.TWO, Suit.RO), new Card(Rank.THREE, Suit.CO), new Card(Rank.FIVE, Suit.BICH))));
+        assertEquals("SÁP 10", CardSqueezeDialog.evaluateHandTitle(List.of(
+                new Card(Rank.TEN, Suit.RO), new Card(Rank.TEN, Suit.CO), new Card(Rank.TEN, Suit.BICH))));
     }
 
     @Test void idleAndHiddenTablesDoNotRunTheAnimationTimer() throws Exception {

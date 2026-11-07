@@ -10,36 +10,27 @@ import java.util.Objects;
 
 /** Pure rules shared by the authoritative server and UI hand descriptions. */
 public class HandEvaluator implements Comparator<Hand> {
-    private static final Comparator<Card> CARD_ORDER = Comparator
+    private static final int HAND_SIZE = 3;
+    private static final Comparator<Card> CARD_STRENGTH = Comparator
             .comparingInt((Card c) -> c.suit().compareValue())
-            .thenComparingInt(c -> c.rank().rankValue()).reversed();
+            .thenComparingInt(c -> c.rank().rankValue());
 
     public Hand evaluate(List<Card> cards) {
-        if (cards == null || cards.size() != 3 || cards.stream().anyMatch(Objects::isNull)
-                || new HashSet<>(cards).size() != 3) {
+        if (cards == null || cards.size() != HAND_SIZE || cards.stream().anyMatch(Objects::isNull)
+                || new HashSet<>(cards).size() != HAND_SIZE) {
             throw new IllegalArgumentException("Tay bài phải gồm đúng 3 lá bài khác nhau");
         }
-        int[] ranks = cards.stream().mapToInt(c -> c.rank().rankValue()).sorted().toArray();
-        HandType type;
-        if (ranks[0] == ranks[2]) type = HandType.SAP;
-        else if (straightHigh(ranks) > 0) type = HandType.LIENG;
-        else if (cards.stream().allMatch(c -> c.rank().isFaceCard())) type = HandType.BO_DOI;
-        else type = HandType.DIEM;
-        return new Hand(cards, type, cards.stream().mapToInt(Card::pointValue).sum() % 10);
-    }
-
-    private static int straightHigh(int[] ranks) {
-        if (ranks[0] == 2 && ranks[1] == 3 && ranks[2] == 14) return 3;
-        return ranks[1] == ranks[0] + 1 && ranks[2] == ranks[1] + 1 ? ranks[2] : 0;
+        boolean sameRank = cards.stream().allMatch(card -> card.rank() == cards.getFirst().rank());
+        HandType type = sameRank ? HandType.SAP : HandType.DIEM;
+        int score = cards.stream().mapToInt(Card::pointValue).sum() % 10;
+        return new Hand(cards, type, score == 0 ? 10 : score);
     }
 
     private static int value(Hand hand) {
-        int[] ranks = hand.cards().stream().mapToInt(c -> c.rank().rankValue()).sorted().toArray();
         return switch (hand.handType()) {
-            case SAP -> ranks[0];
-            case LIENG -> straightHigh(ranks);
+            case SAP -> hand.cards().getFirst().rank().rankValue();
             case DIEM -> hand.score();
-            case BO_DOI -> 0;
+            case LIENG, BO_DOI -> throw new IllegalArgumentException("Loại bài chỉ dùng cho lịch sử cũ");
         };
     }
 
@@ -48,22 +39,20 @@ public class HandEvaluator implements Comparator<Hand> {
         Objects.requireNonNull(a);
         Objects.requireNonNull(b);
         int result = Integer.compare(a.handType().strength(), b.handType().strength());
-        if (result != 0) return result;
-        result = Integer.compare(value(a), value(b));
-        if (result != 0) return result;
-        if (a.handType() == HandType.LIENG) {
-            int high = value(a); // A-2-3 is headed by 3, not A.
-            int suitA = a.cards().stream().filter(c -> c.rank().rankValue() == high)
-                    .findFirst().orElseThrow().suit().compareValue();
-            int suitB = b.cards().stream().filter(c -> c.rank().rankValue() == high)
-                    .findFirst().orElseThrow().suit().compareValue();
-            return Integer.compare(suitA, suitB);
+        if (result != 0) {
+            return result;
         }
-        List<Card> sortedA = a.cards().stream().sorted(CARD_ORDER).toList();
-        List<Card> sortedB = b.cards().stream().sorted(CARD_ORDER).toList();
-        for (int i = 0; i < 3; i++) {
-            result = -CARD_ORDER.compare(sortedA.get(i), sortedB.get(i));
-            if (result != 0) return result;
+        result = Integer.compare(value(a), value(b));
+        if (result != 0) {
+            return result;
+        }
+        List<Card> sortedA = a.cards().stream().sorted(CARD_STRENGTH.reversed()).toList();
+        List<Card> sortedB = b.cards().stream().sorted(CARD_STRENGTH.reversed()).toList();
+        for (int i = 0; i < HAND_SIZE; i++) {
+            result = CARD_STRENGTH.compare(sortedA.get(i), sortedB.get(i));
+            if (result != 0) {
+                return result;
+            }
         }
         return 0;
     }

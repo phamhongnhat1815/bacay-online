@@ -3,6 +3,7 @@ package com.game3cay.shared.model;
 public enum HandType {
   SAP(4, "Sáp"),
 
+  // Retained only for deserializing old results and displaying historical hands.
   LIENG(3, "Liêng"),
 
   BO_DOI(2, "Bồ đội"),

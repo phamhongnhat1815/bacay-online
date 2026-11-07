@@ -197,8 +197,8 @@ class AdminClientInteractionTest {
     }
 
     private static PlayerStateSnapshot player(String balance, long version) {
-        return new PlayerStateSnapshot("round-1", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.KING, Suit.CO),
-                new Card(Rank.QUEEN, Suit.BICH)), new BigDecimal(balance), BigDecimal.TEN, false, false, version);
+        return new PlayerStateSnapshot("round-1", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.TEN, Suit.CO),
+                new Card(Rank.NINE, Suit.BICH)), new BigDecimal(balance), BigDecimal.TEN, false, false, version);
     }
 
     private static void await(BooleanSupplier condition) throws Exception {

@@ -91,8 +91,8 @@ class HandExperienceTest {
         SwingUtilities.invokeAndWait(() -> {
             HandRevealState state = new HandRevealState();
             CardSqueezePanel first = panel(state, () -> {});
-            CardSqueezePanel other = new CardSqueezePanel(List.of(new Card(Rank.KING, Suit.CO),
-                    new Card(Rank.QUEEN, Suit.RO), new Card(Rank.JACK, Suit.BICH)), new HandRevealState(), () -> {}, () -> {});
+            CardSqueezePanel other = new CardSqueezePanel(List.of(new Card(Rank.TEN, Suit.CO),
+                    new Card(Rank.NINE, Suit.RO), new Card(Rank.EIGHT, Suit.BICH)), new HandRevealState(), () -> {}, () -> {});
             other.setSize(684, 510); UiLayoutTest.layout(other);
             pull(first, 0, .25, false); pull(other, 0, .25, false);
             Rectangle r = first.cardBounds(0);

@@ -1154,9 +1154,7 @@ public final class RoomManager implements RoomService, AutoCloseable {
             Hand hand = evaluator.evaluate(cards);
             return switch (hand.handType()) {
                 case SAP -> "Sáp " + cards.get(0).rank().displayName();
-                case LIENG -> "Liêng";
-                case BO_DOI -> "Bồ đội";
-                case DIEM -> hand.score() + " Điểm";
+                default -> hand.score() + " Điểm";
             };
         } catch (Exception e) {
             return "Bài không hợp lệ";

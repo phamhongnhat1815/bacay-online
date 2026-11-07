@@ -6,10 +6,10 @@ Tài liệu này quy định đầy đủ và chính xác toàn bộ luật chơ
 
 ## 1. Quy Định Chung & Bộ Bài
 
-- **Bộ bài sử dụng:** Bộ bài Tây tiêu chuẩn **52 lá** (từ 2 đến Át, gồm 4 chất: Bích ♠, Chuồn/Tép ♣, Rô ♦, Cơ ♥).
+- **Bộ bài sử dụng:** Bộ bài **40 lá**, bỏ J, Q, K (gồm A và các quân từ 2 đến 10, với 4 chất: Bích ♠, Chuồn/Tép ♣, Rô ♦, Cơ ♥).
 - **Số lượng người chơi:** Mỗi bàn có từ **2 đến 8 người chơi**.
 - **Tiền cược sàn (Ante):** Mỗi người chơi khi bắt đầu ván bài phải góp mức cược cơ bản của bàn (mặc định là **10 điểm**, chủ bàn có quyền tùy chỉnh).
-- **Chia bài:** Mỗi người chơi được chia ngẫu nhiên **3 lá bài** kín từ bộ bài 52 lá đã được xáo trộn ngẫu nhiên. Trong suốt ván, không bao giờ xảy ra tình trạng trùng lá giữa các người chơi.
+- **Chia bài:** Mỗi người chơi được chia ngẫu nhiên **3 lá bài** kín từ bộ bài 40 lá đã được xáo trộn ngẫu nhiên. Trong suốt ván, không bao giờ xảy ra tình trạng trùng lá giữa các người chơi.
 
 ---
 
@@ -17,53 +17,24 @@ Tài liệu này quy định đầy đủ và chính xác toàn bộ luật chơ
 
 Thứ tự sức mạnh của các bộ bài được xếp từ cao xuống thấp như sau:
 
-$$\mathbf{Sáp} > \mathbf{Liêng} > \mathbf{Bồ\ Đội} > \mathbf{Điểm}$$
+**Sáp > 10 điểm > 9 điểm > ... > 1 điểm.**
 
-```mermaid
-graph TD
-    SAP["1. SÁP (Three of a Kind)<br/>Ba lá cùng giá trị (AAA > KKK > ... > 222)"] --> LIENG["2. LIÊNG (Straight)<br/>Ba lá liên tiếp (Q-K-A > ... > A-2-3)"]
-    LIENG --> BODOI["3. BỒ ĐỘI (Picture Cards)<br/>Cả ba lá là J, Q, K (Không gồm Sáp/Liêng)"]
-    BODOI --> DIEM["4. ĐIỂM (Modulo 10 Sum)<br/>Tổng chia 10 lấy dư (9 Điểm > 8 Điểm > ... > 0 Điểm)"]
-
-    style SAP fill:#1a3a5f,stroke:#d4af37,stroke-width:2px,color:#ffffff
-    style LIENG fill:#142d4a,stroke:#d4af37,stroke-width:1.5px,color:#ffffff
-    style BODOI fill:#0f2238,stroke:#d4af37,stroke-width:1.5px,color:#ffffff
-    style DIEM fill:#0b1827,stroke:#96a6ba,stroke-width:1px,color:#ffffff
-```
+Không áp dụng liêng. Ba lá liên tiếp (kể cả A-2-3) được tính điểm bình thường. Không có bồ đội vì bộ bài đã bỏ J, Q, K.
 
 ### 2.1. Sáp (Three of a Kind)
 - **Định nghĩa:** Bộ 3 lá bài có **cùng giá trị số**.
-- **Thứ tự giá trị:**
-  $$\mathbf{A-A-A} > \mathbf{K-K-K} > \mathbf{Q-Q-Q} > \mathbf{J-J-J} > \mathbf{10-10-10} > \dots > \mathbf{2-2-2}$$
-- Sáp Át (A-A-A) là bộ bài mạnh nhất trong trò chơi.
+- **Thứ tự giá trị:** **A-A-A > 10-10-10 > 9-9-9 > ... > 2-2-2**.
+- Sáp Át là bộ bài mạnh nhất. Mọi sáp đều thắng bài 10 điểm.
 
-### 2.2. Liêng (Straight)
-- **Định nghĩa:** Bộ 3 lá bài có **giá trị số liên tiếp nhau** (không bắt buộc đồng chất).
-- **Thứ tự giá trị:**
-  - Cao nhất: **Q - K - A** (Liêng đại).
-  - Tiếp theo: **J - Q - K** > **10 - J - Q** > **9 - 10 - J** > ... > **2 - 3 - 4**.
-  - Thấp nhất: **A - 2 - 3** (Át được tính là 1 trong chuỗi thấp nhất).
-- **So sánh khi hai người cùng Liêng:**
-  - So sánh theo cấp Liêng (ví dụ: Q-K-A thắng J-Q-K).
-  - Nếu cùng cấp Liêng (ví dụ: cả hai người cùng có 4-5-6), so sánh theo **Chất** của lá bài cao nhất (xem quy tắc so chất mục 3).
-
-### 2.3. Bồ Đội (Face / Picture Cards)
-- **Định nghĩa:** Cả 3 lá bài đều thuộc tập hợp các quân bài hình người: **Jack (J), Queen (Q), King (K)**, nhưng **loại trừ** các trường hợp đã tạo thành Sáp (ví dụ: J-J-J) hoặc Liêng (ví dụ: J-Q-K).
-- **Ví dụ:** J-J-Q, J-K-K, Q-Q-K, J-Q-Q,...
-- **So sánh khi hai người cùng Bồ Đội:**
-  - Sắp xếp các lá bài theo thứ tự ưu tiên chất giảm dần; nếu cùng chất thì so sánh theo giá trị bài (K > Q > J).
-
-### 2.4. Điểm (Point Sum Modulo 10)
-- **Định nghĩa:** Các trường hợp bài bình thường còn lại, tính theo tổng điểm của 3 lá chia cho 10 lấy phần dư:
+### 2.2. Điểm
+- **Định nghĩa:** Các bộ bài không phải sáp được tính theo tổng điểm của 3 lá:
   - Quân **Át (A)**: tính **1 điểm**.
-  - Các quân từ **2 đến 9**: tính điểm theo đúng số trên mặt lá (**2 đến 9 điểm**).
-  - Các quân **10, J, Q, K**: tính **0 điểm**.
-- **Điểm số cuối cùng:**
-  $$\text{Điểm} = (\text{Lá}_1 + \text{Lá}_2 + \text{Lá}_3) \pmod{10}$$
-- **Xếp hạng:**
-  - Điểm cao nhất là **9 điểm**, thấp nhất là **0 điểm** (còn gọi là "bù" hay "tịt").
-- **So sánh khi bằng điểm:**
-  - Nếu hai người chơi có cùng số điểm (ví dụ: cùng 9 điểm), người nào sở hữu lá bài có chất lớn hơn sẽ chiến thắng (xem quy tắc so chất mục 3).
+  - Các quân từ **2 đến 9**: tính theo số trên mặt lá.
+  - Quân **10**: tính **0 điểm** (tương đương cộng 10 khi lấy hàng đơn vị).
+- **Điểm số cuối cùng:** Lấy hàng đơn vị của tổng; nếu bằng **0** thì tính là **10 điểm**.
+- **Ví dụ:** 2-3-5 và 2-8-10 đều là **10 điểm**; A-2-3 là **6 điểm**; 4-5-6 là **5 điểm**.
+- **Xếp hạng:** **10 > 9 > 8 > ... > 1**. Không có bài 0 điểm.
+- **So sánh khi bằng điểm:** Áp dụng quy tắc so chất và lá bài ở mục 3.
 
 ---
 
@@ -71,20 +42,22 @@ graph TD
 
 Khi hai người chơi có cùng loại bài và cùng cấp giá trị, phân định thắng thua theo thứ tự ưu tiên chất truyền thống của Việt Nam:
 
-$$\mathbf{Rô\ (\diamond)} > \mathbf{Cơ\ (\heartsuit)} > \mathbf{Bích\ (\spadesuit)} > \mathbf{Chuồn\ /\ Tép\ (\clubsuit)}$$
+$$\mathbf{Rô\ (\diamond)} > \mathbf{Cơ\ (\heartsuit)} > \mathbf{Chuồn\ /\ Tép\ (\clubsuit)} > \mathbf{Bích\ (\spadesuit)}$$
 
 | Thứ hạng | Tên chất | Ký hiệu | Màu sắc | Độ ưu tiên |
 |:---:|:---:|:---:|:---:|:---:|
 | **1** | **Rô (Diamonds)** | ♦ | Đỏ | **Cao nhất** |
 | **2** | **Cơ (Hearts)** | ♥ | Đỏ | Thứ nhì |
-| **3** | **Bích (Spades)** | ♠ | Đen | Thứ ba |
-| **4** | **Chuồn / Tép (Clubs)** | ♣ | Đen | **Thấp nhất** |
+| **3** | **Chuồn / Tép (Clubs)** | ♣ | Đen | Thứ ba |
+| **4** | **Bích (Spades)** | ♠ | Đen | **Thấp nhất** |
+
+**Khi bằng điểm:** So chất cao nhất có trong bài theo thứ tự **Rô ♦ > Cơ ♥ > Chuồn ♣ > Bích ♠**. Nếu cùng chất, so số của lá cao nhất thuộc chất đó; **Át lớn nhất**.
 
 ### So sánh chi tiết từng lá:
 Trong cùng một chất, thứ tự giá trị quân bài từ lớn đến bé là:
-$$\mathbf{A} > \mathbf{K} > \mathbf{Q} > \mathbf{J} > \mathbf{10} > \mathbf{9} > \mathbf{8} > \mathbf{7} > \mathbf{6} > \mathbf{5} > \mathbf{4} > \mathbf{3} > \mathbf{2}$$
+$$\mathbf{A} > \mathbf{10} > \mathbf{9} > \mathbf{8} > \mathbf{7} > \mathbf{6} > \mathbf{5} > \mathbf{4} > \mathbf{3} > \mathbf{2}$$
 
-- Hệ thống sẽ sắp xếp 3 lá bài của mỗi người theo chất giảm dần (Rô $\rightarrow$ Cơ $\rightarrow$ Bích $\rightarrow$ Chuồn), trong cùng chất sắp xếp theo rank giảm dần (A $\rightarrow$ 2).
+- Hệ thống sẽ sắp xếp 3 lá bài của mỗi người theo chất giảm dần (Rô $\rightarrow$ Cơ $\rightarrow$ Chuồn $\rightarrow$ Bích), trong cùng chất sắp xếp theo rank giảm dần (A $\rightarrow$ 2).
 - Tiến hành so sánh đối đầu từng lá một (lá thứ nhất, lá thứ hai, lá thứ ba). Người nào có lá vượt trội trước sẽ giành chiến thắng.
 
 ---
@@ -95,7 +68,7 @@ Mỗi ván bài diễn ra qua các bước chuẩn hóa sau:
 
 ```mermaid
 flowchart TD
-    A[Bắt đầu ván] --> B[Trừ Ante 10 điểm / người]
+    A[Bắt đầu ván] --> B[Trừ Ante theo mức bàn, mặc định 10 điểm / người]
     B --> C[Chia 3 lá bài ngẫu nhiên cho mỗi người]
     C --> D[Vòng cược: Bắt đầu từ người kế tiếp chủ bàn theo chiều kim đồng hồ]
     D --> E{Đến lượt hành động<br/>Thời gian suy nghĩ: 30s}
@@ -108,7 +81,9 @@ flowchart TD
     H -- Có từ 2 người so bài --> J[So bài Showdown<br/>Lật bài & Phân định theo Hand Hierarchy]
     I --> K[Thanh toán Pot chính & Pot phụ]
     J --> K
-    K --> L[Lưu kết quả MySQL & Cập nhật BXH]
+    K --> L[Ghi journal bền vững]
+    L --> M[Phát kết quả và hiển thị số dư ván]
+    L --> N[Worker chốt MySQL, cập nhật thống kê và BXH]
 ```
 
 ### 4.1. Các Hành Động Đặt Cược
@@ -129,12 +104,14 @@ flowchart TD
 
 ### 4.2. Giới Hạn Thời Gian (Turn Timeout)
 - Mỗi lượt hành động có thời gian suy nghĩ tối đa là **30 giây**.
+- Đây là mặc định; người vận hành có thể cấu hình `game.turnTimeoutSeconds` trong khoảng 5–300 giây. Quá thời gian cấu hình, máy chủ tự úp bài.
 - Có thanh đo thời gian đếm ngược màu vàng ngay dưới avatar người chơi.
 - Nếu người chơi không chọn hành động trong 30 giây, máy chủ sẽ tự động kích hoạt hành động **Úp bài (Fold)** để bảo đảm ván đấu không bị gián đoạn.
 
 ### 4.3. Cơ Chế Pot Phụ (Side Pots)
 - Khi một hoặc nhiều người chơi chọn **Tất tay** với số điểm ít hơn mức cược của những người khác, hệ thống sẽ tự động chia quỹ cược thành **Main Pot (Pot chính)** và một hoặc nhiều **Side Pots (Pot phụ)**.
 - Người tất tay chỉ được quyền tranh giải trong các Pot mà họ có tham gia đóng góp điểm. Những người còn nhiều điểm sẽ tiếp tục cược với nhau để tranh Side Pot riêng.
+- Nếu một tầng pot không còn người đủ điều kiện nhận do mọi người đóng góp ở tầng đó đã úp/rời bàn, tầng này được hoàn lại cho các người đóng góp. Các tầng còn người đủ điều kiện vẫn được phân định bình thường. Số điểm kết toán chính xác đến 0,01 điểm.
 
 ### 4.4. Xem Và Nặn Bài Riêng
 - Ba lá mới chia được úp. Chọn **Nặn bài**, giữ phần dưới từng lá rồi kéo lên từ từ để hé mặt bài từ mép dưới; kéo đủ xa rồi thả để mở lá đó.
@@ -151,7 +128,7 @@ flowchart TD
 ## 5. Kết Thúc Ván & Xử Lý Sự Cố Kết Nối
 
 ### 5.1. Thắng Trực Tiếp (Sole Survivor)
-- Nếu tất cả người chơi khác đều đã úp bài và chỉ còn duy nhất 1 người trụ lại, người đó ngay lập tức giành chiến thắng toàn bộ số điểm trên bàn mà **không cần lật bài**.
+- Nếu tất cả người chơi khác đều đã úp bài và chỉ còn duy nhất 1 người trụ lại, người đó thắng các pot mình đủ điều kiện nhận mà **không cần lật bài**. Tầng pot không có người đủ điều kiện nhận được hoàn theo mục 4.3.
 
 ### 5.2. So Bài Công Khai (Showdown)
 - Khi tất cả người chơi còn quyền đã hoàn thành đặt cược và cân bằng mức theo, bài của tất cả người chơi tham gia so bài sẽ tự động lật mở trên bàn.
@@ -160,4 +137,7 @@ flowchart TD
 ### 5.3. Mất Kết Nối & Hủy Ván
 - Người chơi bị rớt mạng hoặc tắt ứng dụng giữa ván: Hệ thống xem như người đó đã **Úp bài**; số điểm đã cược vẫn ở trên bàn.
 - Rời bàn hoặc mất mạng không tự hủy ván. Ván tiếp tục với phần cược đã đặt; nếu chỉ còn một người chưa úp bài thì người đó thắng theo mục 5.1. Người đã rời bàn vẫn được kết toán trong kết quả ván.
-- Chỉ thao tác hủy ván có chủ đích của quản trị viên mới tạo kết quả **CANCELLED** và hoàn lại toàn bộ cược của ván. Máy chủ phải ghi journal kết quả hủy trước khi giải phóng khóa điểm và đặt lại bàn.
+- Thao tác hủy ván có chủ đích của quản trị viên tạo kết quả **CANCELLED** và hoàn lại toàn bộ cược của ván. Engine cũng áp dụng hủy/hoàn cược khi không còn người nào chưa úp/chưa rời bàn. Máy chủ phải ghi journal kết quả hủy trước khi giải phóng khóa điểm và đặt lại bàn.
+- Ghi MySQL chạy bất đồng bộ sau khi journal đã bền vững. Nếu DB tạm lỗi, kết quả vẫn chờ chốt và tài khoản liên quan chưa được vào ván mới; không xóa journal để bỏ qua bước này.
+
+Luật được thực thi bởi `shared.game.HandEvaluator` và `server.game.DefaultGameEngine`; xem [kiến trúc](docs/Architecture.md), [dữ liệu](docs/Database.md) và [kiểm thử](docs/Testing.md) để đối chiếu triển khai.

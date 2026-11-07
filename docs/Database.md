@@ -28,6 +28,12 @@ Admin điều chỉnh qua RoomManager, phối hợp trạng thái active/pending
 
 Kết quả CANCELLED là luồng hủy quản trị rõ ràng. Leave/disconnect thông thường xử lý như fold theo Game_Rules.md, không hủy ván miễn phí khi bài xấu.
 
+Engine cũng hủy và hoàn cược nếu không còn bất kỳ người nào chưa úp/chưa rời. Trường hợp còn người chơi nhưng một tầng pot không còn ai đủ điều kiện, chỉ tầng pot đó được hoàn cho người đã đóng góp; ván vẫn `FINISHED`. Chia tiền tính bằng số nguyên đơn vị 0,01 điểm rồi chuyển lại BigDecimal, tránh dùng số thực. Test engine kiểm bảo toàn tổng profit, số dư không âm và hoàn các tầng pot có số lẻ.
+
+## Luật hiện tại và lịch sử cũ
+
+Ván mới chỉ chia 40 lá A–10 và sinh loại bài `SAP` hoặc `DIEM`, với điểm từ 1 đến 10. Các enum J/Q/K, `LIENG` và `BO_DOI` vẫn tồn tại để giải mã bài/kết quả đã lưu trước đó. Không đổi tên hoặc xóa các giá trị này để dọn code; không cần migration/xóa lịch sử cho đợt refactor này. Bài dùng chung và `Hand` bất biến được giữ trong RAM; không thêm cột cache đánh giá bài vào schema.
+
 ## Truy vấn và kết nối
 
 DatabaseConfig dùng DriverManager và MySQL Connector/J như stack ban đầu. Semaphore của JDK giới hạn mặc định 12 kết nối JDBC đồng thời; chờ lượt tối đa 5 giây trước khi báo lỗi. Mỗi open() tạo kết nối độc lập. Connection.close() rollback giao dịch chưa commit, đóng kết nối vật lý và trả lượt, kể cả khi đóng nhiều lần. Không giữ connection nhàn rỗi hoặc tái sử dụng connection giữa các request.
@@ -37,3 +43,5 @@ Cấu hình BACAY_DB_MAX_CONNECTIONS cho phép 1–64 kết nối; BACAY_DB_ACQU
 checkSchema kiểm migration và các bảng/cột cần thiết trước khi nhận kết nối game. Schema không được dò INFORMATION_SCHEMA trên mọi yêu cầu leaderboard. Leaderboard có cache theo trang tối đa 64 mục, TTL 3 giây, được vô hiệu hóa khi chốt ván thành công. Tổng hợp lịch sử vẫn cần được đo với dữ liệu thực trước khi chọn thêm index hoặc thay bằng bảng thống kê.
 
 Các khóa ngoại/unique/check của setup.sql là một phần tính toàn vẹn. Test H2 kiểm logic; MySqlSchemaTest chạy script sản phẩm hai lần trên một database ngẫu nhiên, kiểm nâng cấp schema cũ, giữ user, bootstrap admin, transaction và idempotency. CI chạy kiểm thử này với MySQL 8.4. Có thể bật tại máy phát triển bằng các biến BACAY_TEST_MYSQL_*.
+
+Build Windows và CI kiểm hai bản schema giống nhau trước khi kiểm thử/đóng gói. Cách cấu hình MySQL test và kết quả lần xác minh gần nhất nằm trong [Testing.md](Testing.md); các test MySQL chỉ tạo/xóa database ngẫu nhiên của chính chúng, không dùng database game làm nơi chứa fixture.

@@ -143,10 +143,8 @@ public final class SocketClient {
                         close("Không thể đưa phản hồi PONG vào hàng đợi.");
                         return;
                     }
-                    listener.onPacketReceived(this, packet);
-                } else {
-                    listener.onPacketReceived(this, packet);
                 }
+                listener.onPacketReceived(this, packet);
             }
         } catch (EOFException | SocketException e) {
             close("Mất kết nối hoặc máy chủ đã đóng socket.");

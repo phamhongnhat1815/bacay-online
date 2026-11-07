@@ -2,7 +2,15 @@
 
 Ứng dụng nhiều người chơi dùng Java 21, Swing, TCP/TLS và MySQL 8.0.16 trở lên. Maven có bốn module: `shared` (DTO, luật bài thuần, protocol), `server` (ván bài/JDBC), `client` (người chơi) và `admin` (quản trị).
 
-Các bản sửa giữ bộ thư viện chạy ứng dụng như ban đầu: JDBC dùng `DriverManager` và MySQL Connector/J; TLS/JSSE, logging JUL và giới hạn đồng thời dùng sẵn trong JDK. Không thêm thư viện connection pool hoặc logging bên ngoài. Giao thức Packet có giới hạn kích thước; cần cập nhật đồng bộ server, client và admin.
+JDBC dùng `DriverManager` và MySQL Connector/J; TLS/JSSE, logging JUL và giới hạn đồng thời dùng sẵn trong JDK. Giao thức Packet v5 có giới hạn kích thước; cần cập nhật đồng bộ server, client và admin.
+
+| Thành phần | Trách nhiệm |
+|---|---|
+| `shared/` | Model dùng chung, đánh giá bài, Packet và TLS phía client |
+| `server/` | Phiên đăng nhập, bàn chơi, engine, journal và JDBC |
+| `client/` | Giao diện Swing của người chơi và khôi phục kết nối |
+| `admin/` | Giao diện Swing quản trị, soi bàn và sổ cái |
+| `database/`, `scripts/` | Schema MySQL và script build/khởi chạy Windows |
 
 ## Cài đặt và chạy trên Windows
 
@@ -62,7 +70,7 @@ Bài mới chia được úp cả ba lá. Bấm **Nặn bài**, giữ phần dư
 
 Chuẩn bị ván mới chỉ hiển thị ở thanh nhỏ dưới bàn, không có khung sẵn sàng che giữa bàn. Đủ người và đủ điều kiện, máy chủ tự đếm ngược; vào ván thì thanh này ẩn ngay. **Tạm nghỉ** hủy sẵn sàng và dừng đếm ngược của bàn; **Chơi tiếp** xác nhận tham gia với mức cược hiện tại. Không có checkbox/timer tự sẵn sàng ở client để tự bật lại sau khi bạn đã chọn nghỉ.
 
-Xếp hạng Sáp > Liêng > Bồ đội > Điểm. Liêng cùng cấp so chất lá cao nhất; A-2-3 dùng lá 3, Q-K-A dùng lá A. Điểm được tính tổng modulo 10, nên 0 là 0 điểm. Xem `Game_Rules.md`.
+Bộ bài 40 lá từ A đến 10, không có J/Q/K. Xếp hạng Sáp > 10 điểm > 9 điểm > ... > 1 điểm; không áp dụng liêng hoặc bồ đội. Điểm là hàng đơn vị của tổng (A = 1, 10 = 0), riêng 0 được tính thành 10 điểm. Xem `Game_Rules.md`.
 
 Rời bàn hoặc mất kết nối trong ván được xử lý như úp bài; không hủy miễn phí để né thua. Admin reset đi qua luồng hủy ván có journal và cleanup. Admin không được sửa số dư của tài khoản đang tham gia/chờ chốt kết quả. Các giao dịch admin và kết quả ván đều xuất hiện trong sổ cái.
 
@@ -70,9 +78,11 @@ Kết quả được ghi journal `.round` bằng Java serialization, fsync và �
 
 ## Build và kiểm thử
 
-Windows: `Build.cmd` hoặc `.\mvnw.cmd -f pom.xml verify`. Lệnh Maven chạy kiểm thử nhưng chỉ `Build.ps1` đóng gói/copy vào `dist/`.
+Windows: `Build.cmd` hoặc `.\mvnw.cmd -f pom.xml clean verify`. Lệnh Maven chạy kiểm thử và tạo JAR trong `target/` của từng module; `scripts/Build.ps1` được gọi bởi `Build.cmd` để kiểm schema, chạy `clean install` rồi copy JAR, dependency, script và toàn bộ tài liệu vào `dist/`.
 
-Linux/macOS: `bash server/mvnw -f pom.xml verify`. Các script khởi chạy/đóng gói hiện được hỗ trợ trên Windows; chạy Java trực tiếp nếu triển khai trên hệ điều hành khác.
+Linux/macOS: `bash server/mvnw -f pom.xml clean verify`. Các script khởi chạy/đóng gói hiện được hỗ trợ trên Windows; chạy Java trực tiếp nếu triển khai trên hệ điều hành khác.
+
+Root `pom.xml` là parent của cả bốn module, quản lý Java 21, UTF-8, compiler/Surefire và phiên bản dependency dùng chung. Client/admin chạy test Swing ở chế độ headless; JUnit và H2 chỉ phục vụ kiểm thử. Khi sửa cấu hình chung, cập nhật parent; chỉ để cấu hình đặc thù trong POM module.
 
 Test thường dùng H2. CI còn chạy MySQL thực để kiểm tra script cài mới/nâng cấp, giữ dữ liệu cũ và tính idempotent của giao dịch. Muốn chạy test MySQL tại máy phát triển, đặt `BACAY_TEST_MYSQL_URL`, `BACAY_TEST_MYSQL_USER`, `BACAY_TEST_MYSQL_PASSWORD` rồi chạy Maven verify. Test chỉ tạo/xóa database riêng tên `bacay_ci_<uuid>` hoặc `bacay_test_<uuid>`; tài khoản test cần quyền CREATE/DROP DATABASE.
 
@@ -80,4 +90,13 @@ Test thường dùng H2. CI còn chạy MySQL thực để kiểm tra script cà
 
 Log JUL ghi console và xoay vòng `logs/server-*.log` (5 file, tối đa 5 MB/file). Lỗi xác thực, đọc protocol hoặc chốt kết quả có ngữ cảnh để chẩn đoán; không ghi mật khẩu hoặc bài riêng. Theo dõi journal pending và lỗi kết nối DB trước khi khởi động ván mới.
 
-Tài liệu kỹ thuật: `docs/Architecture.md`, `docs/Protocol.md`, `docs/Database.md`, `docs/Screen_Data_Mapping.md`. Kết nối DB dùng JDBC trực tiếp, mỗi lần mở tạo một kết nối độc lập và đóng kết nối vật lý sau khi dùng. Mã hash sử dụng PBKDF2WithHmacSHA256, salt 16 byte và 310.000 vòng hiện tại.
+Kết nối DB dùng JDBC trực tiếp, mỗi lần mở tạo một kết nối độc lập và đóng kết nối vật lý sau khi dùng. Mã hash sử dụng PBKDF2WithHmacSHA256, salt 16 byte và 310.000 vòng hiện tại.
+
+Tài liệu dự án:
+
+- [Luật chơi](Game_Rules.md): bộ bài, xếp hạng, cược và xử lý rời bàn.
+- [Kiến trúc](docs/Architecture.md): trách nhiệm module, đồng thời và journal.
+- [Giao thức](docs/Protocol.md): frame Packet v5, request/push và phân quyền.
+- [Cơ sở dữ liệu](docs/Database.md): schema, transaction, dữ liệu lịch sử.
+- [Giao diện và dữ liệu](docs/Screen_Data_Mapping.md): màn hình, packet và trạng thái UI.
+- [Kiểm thử và phát triển](docs/Testing.md): lệnh chạy, phạm vi test và kết quả xác minh.

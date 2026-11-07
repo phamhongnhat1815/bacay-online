@@ -5,6 +5,7 @@ import com.game3cay.shared.model.BetRecord;
 import com.game3cay.shared.model.BetStateSnapshot;
 import com.game3cay.shared.model.Card;
 import com.game3cay.shared.model.GameStateSnapshot;
+import com.game3cay.shared.model.Hand;
 import com.game3cay.shared.model.PlayerResult;
 import com.game3cay.shared.model.PlayerStateSnapshot;
 import com.game3cay.shared.model.Rank;
@@ -43,15 +44,17 @@ public final class DefaultGameEngine implements GameEngine {
     private static final class Player {
         final RoundParticipant info;
         final List<Card> cards;
+        final Hand hand;
         final BigDecimal initialBalance;
         BigDecimal bet = ZERO;
         BigDecimal balance;
         boolean folded;
         boolean left;
 
-        Player(RoundParticipant participant, List<Card> cards) {
+        Player(RoundParticipant participant, Hand hand) {
             this.info = participant;
-            this.cards = List.copyOf(cards);
+            this.hand = hand;
+            this.cards = hand.cards();
             this.initialBalance = participant.balance();
             this.balance = initialBalance;
         }
@@ -110,10 +113,10 @@ public final class DefaultGameEngine implements GameEngine {
             }
         }
 
-        List<Card> deck = new ArrayList<>(52);
+        List<Card> deck = new ArrayList<>(40);
         for (Suit suit : Suit.values()) {
             for (Rank rank : Rank.values()) {
-                deck.add(new Card(rank, suit));
+                if (!rank.isFaceCard()) deck.add(new Card(rank, suit));
             }
         }
         Collections.shuffle(deck, random);
@@ -121,7 +124,7 @@ public final class DefaultGameEngine implements GameEngine {
         Round round = new Round(roundId, ante);
         for (int i = 0; i < participants.size(); i++) {
             List<Card> dealtCards = deck.subList(i * 3, i * 3 + 3);
-            Player player = new Player(participants.get(i), dealtCards);
+            Player player = new Player(participants.get(i), evaluator.evaluate(dealtCards));
             round.players.add(player);
             deductBet(round, player, ante, BetAction.ANTE);
 
@@ -303,14 +306,16 @@ public final class DefaultGameEngine implements GameEngine {
         return buildActionResult(round);
     }
 
-    private List<SidePot> computeSidePots(Round round) {
-        List<BigDecimal> betLevels = round.players.stream()
+    private List<BigDecimal> betLevels(Round round) {
+        return round.players.stream()
                 .map(p -> p.bet)
                 .filter(b -> b.signum() > 0)
                 .distinct()
                 .sorted()
                 .toList();
+    }
 
+    private List<SidePot> computeSidePots(Round round, List<BigDecimal> betLevels) {
         List<SidePot> pots = new ArrayList<>();
         BigDecimal previousLevel = ZERO;
 
@@ -343,57 +348,72 @@ public final class DefaultGameEngine implements GameEngine {
             cancelled = true;
         }
 
-        Map<Long, BigDecimal> winAmounts = new HashMap<>();
-        for (Player p : round.players) {
-            winAmounts.put(p.info.userId(), ZERO);
-        }
+        List<BigDecimal> betLevels = betLevels(round);
+        List<SidePot> pots = computeSidePots(round, betLevels);
+        Map<Long, BigDecimal> winAmounts = calculateWinnings(round, pots, betLevels, cancelled);
+        List<PlayerResult> playerResults = buildPlayerResults(round, winAmounts, cancelled);
 
-        List<SidePot> pots = computeSidePots(round);
-        List<BigDecimal> betLevels = round.players.stream()
-                .map(p -> p.bet)
-                .filter(b -> b.signum() > 0)
-                .distinct()
-                .sorted()
-                .toList();
+        round.phase = cancelled ? "CANCELLED" : "FINISHED";
+        round.turnUserId = null;
+        round.pending.clear();
+        round.version++;
+        round.result = new RoundResult(
+                round.id,
+                playerResults,
+                List.copyOf(round.history),
+                pots,
+                round.phase,
+                System.currentTimeMillis()
+        );
+    }
+
+    private Map<Long, BigDecimal> calculateWinnings(
+            Round round, List<SidePot> pots, List<BigDecimal> betLevels, boolean cancelled) {
+        Map<Long, BigDecimal> winAmounts = new HashMap<>();
+        for (Player player : round.players) {
+            winAmounts.put(player.info.userId(), ZERO);
+        }
 
         if (!cancelled) {
             for (int i = 0; i < pots.size(); i++) {
                 SidePot pot = pots.get(i);
-                List<Player> potWinners;
-
-                if (pot.eligiblePlayerIds().isEmpty()) {
-                    BigDecimal currentLevel = betLevels.get(i);
-                    potWinners = round.players.stream()
-                            .filter(p -> p.bet.compareTo(currentLevel) >= 0)
-                            .toList();
-                } else {
-                    List<Player> eligiblePlayers = round.players.stream()
-                            .filter(p -> pot.eligiblePlayerIds().contains(p.info.userId()))
-                            .toList();
-
-                    Player bestPlayer = eligiblePlayers.stream()
-                            .max((a, b) -> evaluator.compare(evaluator.evaluate(a.cards), evaluator.evaluate(b.cards)))
-                            .orElseThrow();
-
-                    potWinners = eligiblePlayers.stream()
-                            .filter(p -> evaluator.compare(evaluator.evaluate(p.cards), evaluator.evaluate(bestPlayer.cards)) == 0)
-                            .toList();
-                }
-
-                long totalCents = pot.amount().movePointRight(2).longValueExact();
-                int winnerCount = potWinners.size();
-                for (int w = 0; w < winnerCount; w++) {
-                    long shareCents = totalCents / winnerCount + (w < totalCents % winnerCount ? 1 : 0);
-                    BigDecimal shareAmount = BigDecimal.valueOf(shareCents, 2);
-                    winAmounts.merge(potWinners.get(w).info.userId(), shareAmount, BigDecimal::add);
-                }
+                List<Player> winners = potWinners(round, pot, betLevels.get(i));
+                distributePot(pot.amount(), winners, winAmounts);
             }
         }
+        return winAmounts;
+    }
 
+    private List<Player> potWinners(Round round, SidePot pot, BigDecimal betLevel) {
+        if (pot.eligiblePlayerIds().isEmpty()) {
+            // No eligible player remains at this level: refund its contributors.
+            return round.players.stream().filter(p -> p.bet.compareTo(betLevel) >= 0).toList();
+        }
+        List<Player> eligiblePlayers = round.players.stream()
+                .filter(p -> pot.eligiblePlayerIds().contains(p.info.userId()))
+                .toList();
+        Player bestPlayer = eligiblePlayers.stream()
+                .max((a, b) -> evaluator.compare(a.hand, b.hand))
+                .orElseThrow();
+        return eligiblePlayers.stream()
+                .filter(p -> evaluator.compare(p.hand, bestPlayer.hand) == 0)
+                .toList();
+    }
+
+    private void distributePot(BigDecimal amount, List<Player> winners, Map<Long, BigDecimal> winAmounts) {
+        long totalCents = amount.movePointRight(2).longValueExact();
+        int winnerCount = winners.size();
+        for (int i = 0; i < winnerCount; i++) {
+            // Assign leftover cents in seat order so every point is accounted for.
+            long shareCents = totalCents / winnerCount + (i < totalCents % winnerCount ? 1 : 0);
+            winAmounts.merge(winners.get(i).info.userId(), BigDecimal.valueOf(shareCents, 2), BigDecimal::add);
+        }
+    }
+
+    private List<PlayerResult> buildPlayerResults(Round round, Map<Long, BigDecimal> winAmounts, boolean cancelled) {
         boolean hasShowdown = round.players.stream().filter(p -> !p.folded && !p.left).count() > 1;
-        List<Player> orderedWinners = round.players.stream()
+        List<Player> survivors = round.players.stream()
                 .filter(p -> !p.folded && !p.left)
-                .sorted((a, b) -> evaluator.compare(evaluator.evaluate(b.cards), evaluator.evaluate(a.cards)))
                 .toList();
 
         List<PlayerResult> playerResults = new ArrayList<>();
@@ -405,8 +425,8 @@ public final class DefaultGameEngine implements GameEngine {
             if (cancelled || p.folded) {
                 placement = 0;
             } else {
-                placement = 1 + (int) orderedWinners.stream()
-                        .filter(other -> evaluator.compare(evaluator.evaluate(other.cards), evaluator.evaluate(p.cards)) > 0)
+                placement = 1 + (int) survivors.stream()
+                        .filter(other -> evaluator.compare(other.hand, p.hand) > 0)
                         .count();
             }
 
@@ -423,7 +443,7 @@ public final class DefaultGameEngine implements GameEngine {
                 outcome = "DRAW";
             }
 
-            var handToReveal = (!cancelled && hasShowdown && !p.folded) ? evaluator.evaluate(p.cards) : null;
+            Hand handToReveal = (!cancelled && hasShowdown && !p.folded) ? p.hand : null;
 
             playerResults.add(new PlayerResult(
                     p.info.userId(),
@@ -436,18 +456,7 @@ public final class DefaultGameEngine implements GameEngine {
             ));
         }
 
-        round.phase = cancelled ? "CANCELLED" : "FINISHED";
-        round.turnUserId = null;
-        round.pending.clear();
-        round.version++;
-        round.result = new RoundResult(
-                round.id,
-                List.copyOf(playerResults),
-                List.copyOf(round.history),
-                pots,
-                round.phase,
-                System.currentTimeMillis()
-        );
+        return List.copyOf(playerResults);
     }
 
     private GameStateSnapshot createSnapshot(Round round) {
@@ -528,7 +537,7 @@ public final class DefaultGameEngine implements GameEngine {
                 round.turnUserId,
                 round.highBet,
                 totalPot,
-                computeSidePots(round),
+                computeSidePots(round, betLevels(round)),
                 playerBetList,
                 round.version
         );

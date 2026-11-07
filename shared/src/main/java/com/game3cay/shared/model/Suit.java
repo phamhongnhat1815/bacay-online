@@ -1,8 +1,8 @@
 package com.game3cay.shared.model;
 
 public enum Suit {
-    CHUON(1, "Chuồn", "♣"),
-    BICH(2, "Bích",  "♠"),
+    CHUON(2, "Chuồn", "♣"),
+    BICH(1, "Bích",  "♠"),
     CO  (3, "Cơ",    "♥"),
     RO  (4, "Rô",    "♦");
 

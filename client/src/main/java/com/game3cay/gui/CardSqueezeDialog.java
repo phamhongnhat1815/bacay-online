@@ -27,9 +27,7 @@ public final class CardSqueezeDialog extends JDialog {
         var hand = new HandEvaluator().evaluate(cards);
         return switch (hand.handType()) {
             case SAP -> "SÁP " + cards.getFirst().rank().displayName();
-            case LIENG -> "LIÊNG";
-            case BO_DOI -> "BỒ ĐỘI (3 TÂY)";
-            case DIEM -> hand.score() + " ĐIỂM";
+            default -> hand.score() + " ĐIỂM";
         };
     }
 }
