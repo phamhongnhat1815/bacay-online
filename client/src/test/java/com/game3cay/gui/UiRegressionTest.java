@@ -79,8 +79,8 @@ class UiRegressionTest {
                 new Card(Rank.ACE, Suit.RO), new Card(Rank.TWO, Suit.CO), new Card(Rank.THREE, Suit.BICH))));
         assertEquals("10 ĐIỂM", CardSqueezeDialog.evaluateHandTitle(List.of(
                 new Card(Rank.TWO, Suit.RO), new Card(Rank.THREE, Suit.CO), new Card(Rank.FIVE, Suit.BICH))));
-        assertEquals("SÁP 10", CardSqueezeDialog.evaluateHandTitle(List.of(
-                new Card(Rank.TEN, Suit.RO), new Card(Rank.TEN, Suit.CO), new Card(Rank.TEN, Suit.BICH))));
+        assertEquals("SÁP 7", CardSqueezeDialog.evaluateHandTitle(List.of(
+                new Card(Rank.SEVEN, Suit.RO), new Card(Rank.SEVEN, Suit.CO), new Card(Rank.SEVEN, Suit.BICH))));
     }
 
     @Test void idleAndHiddenTablesDoNotRunTheAnimationTimer() throws Exception {

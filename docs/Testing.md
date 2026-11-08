@@ -23,7 +23,7 @@ bash server/mvnw -f pom.xml clean verify
 | Module | Kiểm tra chính |
 |---|---|
 | shared | Tay bài không hợp lệ, bất biến dữ liệu, hoán vị lá, tính đối xứng/ngược dấu và thứ tự comparator |
-| server | Toàn bộ 9.880 tổ hợp ba lá của bộ 40 lá, chia bài không trùng, lượt/cược, all-in/side pot, bảo toàn điểm và số dư |
+| server | Toàn bộ 7.140 tổ hợp ba lá của bộ 36 lá, chia bài không trùng, lượt/cược, all-in/side pot, bảo toàn điểm và số dư |
 | server | Room/concurrency, journal/retry/idempotency, JDBC với H2, phân quyền admin, Packet qua socket và TLS |
 | server + MySQL | Cài mới/nâng cấp schema thật, chạy SQL lặp, giữ dữ liệu cũ, bootstrap, transaction và chống chốt trùng |
 | client | Reconnect, push admin/profile, bố cục Swing, readiness, nặn bài và render asset/HiDPI |

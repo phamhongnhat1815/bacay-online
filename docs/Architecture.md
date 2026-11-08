@@ -12,7 +12,7 @@ Client hoặc admin kết nối TLS và xác minh chứng chỉ máy chủ. Pack
 
 Các gói bài riêng chỉ được gửi đến đúng người chơi. Endpoint ADMIN_INSPECT_ROOM_REQ được bảo vệ bằng quyền ADMIN. Tài khoản quản trị không tham gia chơi. Mật khẩu đăng nhập được kiểm bằng PBKDF2WithHmacSHA256 có salt 16 byte, hiện 310.000 vòng; TLS bảo vệ mật khẩu khi truyền.
 
-`shared.game.HandEvaluator` là nguồn luật chung: Sáp hoặc Điểm, 0 modulo 10 được tính 10 điểm, Rô > Cơ > Chuồn > Bích và Át cao nhất khi so lá. Lớp cùng tên trong server chỉ giữ tên tương thích. Không xóa các enum J/Q/K, LIENG/BO_DOI vì dữ liệu lịch sử còn dùng; engine và preload asset chỉ chọn 40 lá đang chơi.
+`shared.game.HandEvaluator` là nguồn luật chung: Sáp hoặc Điểm, 0 modulo 10 được tính 10 điểm, Rô > Cơ > Chuồn > Bích và Át cao nhất khi so lá. Lớp cùng tên trong server chỉ giữ tên tương thích. Không xóa các enum 10/J/Q/K, LIENG/BO_DOI vì dữ liệu lịch sử còn dùng; engine và preload asset chỉ chọn 36 lá đang chơi.
 
 DefaultGameEngine đánh giá mỗi tay bài một lần khi chia, lưu `Hand` bất biến trong trạng thái nội bộ của người chơi. Khi kết thúc, engine lần lượt tính các mức đóng góp/pot, xác định người nhận, chia đến đơn vị 0,01 điểm và tạo kết quả. Pot không có người còn quyền nhận được trả lại cho các người đóng góp ở mức đó. Xếp hạng, số dư và bài được công khai tuân theo [luật chơi](../Game_Rules.md); tay bài lưu nội bộ không tự trở thành dữ liệu công khai.
 

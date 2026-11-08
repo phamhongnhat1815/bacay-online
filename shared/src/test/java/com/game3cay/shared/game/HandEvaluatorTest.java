@@ -56,7 +56,7 @@ class HandEvaluatorTest {
         List<Card> deck = new ArrayList<>();
         for (Suit suit : Suit.values()) {
             for (Rank rank : Rank.values()) {
-                if (!rank.isFaceCard()) {
+                if (rank != Rank.TEN && !rank.isFaceCard()) {
                     deck.add(new Card(rank, suit));
                 }
             }

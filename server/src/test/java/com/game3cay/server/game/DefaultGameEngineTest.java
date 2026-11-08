@@ -33,20 +33,20 @@ class DefaultGameEngineTest {
   void sapBeatsTenAndTenBeatsNine() {
     var sap = eval.evaluate(List.of(c(Rank.TWO, Suit.CO), c(Rank.TWO, Suit.BICH), c(Rank.TWO, Suit.CHUON)));
     var ten = eval.evaluate(List.of(c(Rank.TWO, Suit.RO), c(Rank.THREE, Suit.CO), c(Rank.FIVE, Suit.BICH)));
-    var nine = eval.evaluate(List.of(c(Rank.FOUR, Suit.RO), c(Rank.FIVE, Suit.CO), c(Rank.TEN, Suit.BICH)));
+    var nine = eval.evaluate(List.of(c(Rank.TWO, Suit.RO), c(Rank.THREE, Suit.CO), c(Rank.FOUR, Suit.BICH)));
     assertEquals(HandType.SAP, sap.handType());
     assertEquals(HandType.DIEM, ten.handType());
     assertEquals(10, ten.score());
     assertEquals(9, nine.score());
     assertTrue(eval.compare(sap, ten) > 0);
     assertTrue(eval.compare(ten, nine) > 0);
-    var twenty = eval.evaluate(List.of(c(Rank.TWO, Suit.CO), c(Rank.EIGHT, Suit.RO), c(Rank.TEN, Suit.CO)));
+    var twenty = eval.evaluate(List.of(c(Rank.TWO, Suit.CO), c(Rank.NINE, Suit.RO), c(Rank.NINE, Suit.CO)));
     assertEquals(10, twenty.score());
-    var tens = eval.evaluate(List.of(c(Rank.TEN, Suit.RO), c(Rank.TEN, Suit.CO), c(Rank.TEN, Suit.BICH)));
-    assertEquals(HandType.SAP, tens.handType());
-    assertTrue(eval.compare(tens, ten) > 0);
+    var nines = eval.evaluate(List.of(c(Rank.NINE, Suit.RO), c(Rank.NINE, Suit.CO), c(Rank.NINE, Suit.BICH)));
+    assertEquals(HandType.SAP, nines.handType());
+    assertTrue(eval.compare(nines, ten) > 0);
     var aces = eval.evaluate(List.of(c(Rank.ACE, Suit.RO), c(Rank.ACE, Suit.CO), c(Rank.ACE, Suit.BICH)));
-    assertTrue(eval.compare(aces, tens) > 0);
+    assertTrue(eval.compare(aces, nines) > 0);
   }
 
   @Test
@@ -54,8 +54,8 @@ class DefaultGameEngineTest {
     var deck = new ArrayList<Card>();
     for (Suit suit : Suit.values())
       for (Rank rank : Rank.values())
-        if (!rank.isFaceCard()) deck.add(c(rank, suit));
-    assertEquals(40, deck.size());
+        if (rank != Rank.TEN && !rank.isFaceCard()) deck.add(c(rank, suit));
+    assertEquals(36, deck.size());
     var scores = new HashSet<Integer>();
     int sapCount = 0;
     for (int i = 0; i < deck.size(); i++)
@@ -70,7 +70,7 @@ class DefaultGameEngineTest {
           if (sameRank) sapCount++;
           else scores.add(hand.score());
         }
-    assertEquals(40, sapCount);
+    assertEquals(36, sapCount);
     assertEquals(Set.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), scores);
   }
 
@@ -78,10 +78,10 @@ class DefaultGameEngineTest {
   void suitOrderBreaksEqualPoints() {
     var a =
         eval.evaluate(
-            List.of(c(Rank.FOUR, Suit.RO), c(Rank.FIVE, Suit.CO), c(Rank.TEN, Suit.BICH)));
+            List.of(c(Rank.TWO, Suit.RO), c(Rank.THREE, Suit.CO), c(Rank.FOUR, Suit.BICH)));
     var b =
         eval.evaluate(
-            List.of(c(Rank.FOUR, Suit.CO), c(Rank.FIVE, Suit.BICH), c(Rank.TEN, Suit.CHUON)));
+            List.of(c(Rank.TWO, Suit.CO), c(Rank.THREE, Suit.BICH), c(Rank.FOUR, Suit.CHUON)));
     assertTrue(eval.compare(a, b) > 0);
   }
 
@@ -97,18 +97,18 @@ class DefaultGameEngineTest {
       assertTrue(eval.compare(lowerSuit, higherSuit) < 0);
     }
     var ace = eval.evaluate(List.of(c(Rank.ACE, Suit.RO), c(Rank.TWO, Suit.BICH), c(Rank.SEVEN, Suit.BICH)));
-    var ten = eval.evaluate(List.of(c(Rank.TEN, Suit.RO), c(Rank.TWO, Suit.CO), c(Rank.EIGHT, Suit.CO)));
-    assertEquals(ace.score(), ten.score());
-    assertTrue(eval.compare(ace, ten) > 0);
+    var nineHigh = eval.evaluate(List.of(c(Rank.NINE, Suit.RO), c(Rank.TWO, Suit.CO), c(Rank.NINE, Suit.CO)));
+    assertEquals(ace.score(), nineHigh.score());
+    assertTrue(eval.compare(ace, nineHigh) > 0);
     // Within the highest suit, use its highest card even if it appears last in the input.
-    var nine = eval.evaluate(List.of(c(Rank.ACE, Suit.BICH), c(Rank.TEN, Suit.BICH), c(Rank.NINE, Suit.RO)));
-    var twoDiamonds = eval.evaluate(List.of(c(Rank.TWO, Suit.RO), c(Rank.TEN, Suit.CO), c(Rank.EIGHT, Suit.RO)));
+    var nine = eval.evaluate(List.of(c(Rank.ACE, Suit.BICH), c(Rank.NINE, Suit.BICH), c(Rank.NINE, Suit.RO)));
+    var twoDiamonds = eval.evaluate(List.of(c(Rank.TWO, Suit.RO), c(Rank.NINE, Suit.CO), c(Rank.EIGHT, Suit.RO)));
     assertEquals(nine.score(), twoDiamonds.score());
     assertTrue(eval.compare(nine, twoDiamonds) > 0);
   }
 
   @Test
-  void eightPlayersReceiveUniqueCardsFromTheFortyCardDeck() throws Exception {
+  void eightPlayersReceiveUniqueCardsFromTheThirtySixCardDeck() throws Exception {
     var seen = new HashSet<Card>();
     for (int seed = 0; seed < 100; seed++) {
       var e = new DefaultGameEngine(new Random(seed));
@@ -116,11 +116,11 @@ class DefaultGameEngineTest {
       var cards = new HashSet<Card>();
       for (long id = 1; id <= 8; id++) cards.addAll(e.getPlayerCards("round", id));
       assertEquals(24, cards.size());
-      assertTrue(cards.stream().noneMatch(card -> card.rank().isFaceCard()));
+      assertTrue(cards.stream().noneMatch(card -> card.rank() == Rank.TEN || card.rank().isFaceCard()));
       assertEquals(2L, e.getPublicSnapshot("round").currentTurnUserId());
       seen.addAll(cards);
     }
-    assertEquals(40, seen.size());
+    assertEquals(36, seen.size());
   }
 
   @Test

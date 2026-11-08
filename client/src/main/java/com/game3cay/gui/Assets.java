@@ -33,7 +33,7 @@ public final class Assets {
         for (int avatar = 1; avatar <= 6; avatar++) get("avatars/avatar_player_" + avatar + ".png", 100);
         for (Suit suit : Suit.values()) {
             for (Rank rank : Rank.values()) {
-                if (!rank.isFaceCard()) card(new Card(rank, suit));
+                if (rank.isPlayable()) card(new Card(rank, suit));
             }
         }
     }

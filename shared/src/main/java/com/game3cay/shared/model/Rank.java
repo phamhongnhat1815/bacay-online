@@ -9,8 +9,8 @@ public enum Rank {
     SEVEN(7,  7,  "7"),
     EIGHT(8,  8,  "8"),
     NINE (9,  9,  "9"),
-    TEN  (10, 0,  "10"),
     // Retained for stored cards from older rounds; excluded from the playing deck.
+    TEN  (10, 0,  "10"),
     JACK (11, 0,  "J"),
     QUEEN(12, 0,  "Q"),
     KING (13, 0,  "K"),
@@ -33,5 +33,9 @@ public enum Rank {
 
     public boolean isFaceCard() {
         return this == JACK || this == QUEEN || this == KING;
+    }
+
+    public boolean isPlayable() {
+        return this != TEN && !isFaceCard();
     }
 }

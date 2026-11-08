@@ -32,7 +32,7 @@ Engine cũng hủy và hoàn cược nếu không còn bất kỳ người nào 
 
 ## Luật hiện tại và lịch sử cũ
 
-Ván mới chỉ chia 40 lá A–10 và sinh loại bài `SAP` hoặc `DIEM`, với điểm từ 1 đến 10. Các enum J/Q/K, `LIENG` và `BO_DOI` vẫn tồn tại để giải mã bài/kết quả đã lưu trước đó. Không đổi tên hoặc xóa các giá trị này để dọn code; không cần migration/xóa lịch sử cho đợt refactor này. Bài dùng chung và `Hand` bất biến được giữ trong RAM; không thêm cột cache đánh giá bài vào schema.
+Ván mới chỉ chia 36 lá A–9 và sinh loại bài `SAP` hoặc `DIEM`, với điểm từ 1 đến 10. Các enum 10/J/Q/K, `LIENG` và `BO_DOI` vẫn tồn tại để giải mã bài/kết quả đã lưu trước đó. Không đổi tên hoặc xóa các giá trị này để dọn code; không cần migration/xóa lịch sử cho đợt refactor này. Bài dùng chung và `Hand` bất biến được giữ trong RAM; không thêm cột cache đánh giá bài vào schema.
 
 ## Truy vấn và kết nối
 

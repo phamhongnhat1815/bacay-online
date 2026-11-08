@@ -113,10 +113,10 @@ public final class DefaultGameEngine implements GameEngine {
             }
         }
 
-        List<Card> deck = new ArrayList<>(40);
+        List<Card> deck = new ArrayList<>(36);
         for (Suit suit : Suit.values()) {
             for (Rank rank : Rank.values()) {
-                if (!rank.isFaceCard()) deck.add(new Card(rank, suit));
+                if (rank.isPlayable()) deck.add(new Card(rank, suit));
             }
         }
         Collections.shuffle(deck, random);

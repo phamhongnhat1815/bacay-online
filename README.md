@@ -70,7 +70,7 @@ Bài mới chia được úp cả ba lá. Bấm **Nặn bài**, giữ phần dư
 
 Chuẩn bị ván mới chỉ hiển thị ở thanh nhỏ dưới bàn, không có khung sẵn sàng che giữa bàn. Đủ người và đủ điều kiện, máy chủ tự đếm ngược; vào ván thì thanh này ẩn ngay. **Tạm nghỉ** hủy sẵn sàng và dừng đếm ngược của bàn; **Chơi tiếp** xác nhận tham gia với mức cược hiện tại. Không có checkbox/timer tự sẵn sàng ở client để tự bật lại sau khi bạn đã chọn nghỉ.
 
-Bộ bài 40 lá từ A đến 10, không có J/Q/K. Xếp hạng Sáp > 10 điểm > 9 điểm > ... > 1 điểm; không áp dụng liêng hoặc bồ đội. Điểm là hàng đơn vị của tổng (A = 1, 10 = 0), riêng 0 được tính thành 10 điểm. Xem `Game_Rules.md`.
+Bộ bài 36 lá từ A đến 9, không có 10/J/Q/K. Xếp hạng Sáp > 10 điểm > 9 điểm > ... > 1 điểm; không áp dụng liêng hoặc bồ đội. Điểm là hàng đơn vị của tổng (A = 1, các lá 2–9 tính theo số), riêng 0 được tính thành 10 điểm. Xem `Game_Rules.md`.
 
 Rời bàn hoặc mất kết nối trong ván được xử lý như úp bài; không hủy miễn phí để né thua. Admin reset đi qua luồng hủy ván có journal và cleanup. Admin không được sửa số dư của tài khoản đang tham gia/chờ chốt kết quả. Các giao dịch admin và kết quả ván đều xuất hiện trong sổ cái.
 
@@ -94,6 +94,7 @@ Kết nối DB dùng JDBC trực tiếp, mỗi lần mở tạo một kết nố
 
 Tài liệu dự án:
 
+- [Tổng quan mã nguồn dành cho nhóm](docs/Tong_Quan_Ma_Nguon.md): bản đồ code, vai trò từng phần, luồng xử lý và nơi sửa theo chức năng.
 - [Luật chơi](Game_Rules.md): bộ bài, xếp hạng, cược và xử lý rời bàn.
 - [Kiến trúc](docs/Architecture.md): trách nhiệm module, đồng thời và journal.
 - [Giao thức](docs/Protocol.md): frame Packet v5, request/push và phân quyền.

@@ -6,10 +6,10 @@ Tài liệu này quy định đầy đủ và chính xác toàn bộ luật chơ
 
 ## 1. Quy Định Chung & Bộ Bài
 
-- **Bộ bài sử dụng:** Bộ bài **40 lá**, bỏ J, Q, K (gồm A và các quân từ 2 đến 10, với 4 chất: Bích ♠, Chuồn/Tép ♣, Rô ♦, Cơ ♥).
+- **Bộ bài sử dụng:** Bộ bài **36 lá**, bỏ 10, J, Q, K (gồm A và các quân từ 2 đến 9, với 4 chất: Bích ♠, Chuồn/Tép ♣, Rô ♦, Cơ ♥).
 - **Số lượng người chơi:** Mỗi bàn có từ **2 đến 8 người chơi**.
 - **Tiền cược sàn (Ante):** Mỗi người chơi khi bắt đầu ván bài phải góp mức cược cơ bản của bàn (mặc định là **10 điểm**, chủ bàn có quyền tùy chỉnh).
-- **Chia bài:** Mỗi người chơi được chia ngẫu nhiên **3 lá bài** kín từ bộ bài 40 lá đã được xáo trộn ngẫu nhiên. Trong suốt ván, không bao giờ xảy ra tình trạng trùng lá giữa các người chơi.
+- **Chia bài:** Mỗi người chơi được chia ngẫu nhiên **3 lá bài** kín từ bộ bài 36 lá đã được xáo trộn ngẫu nhiên. Trong suốt ván, không bao giờ xảy ra tình trạng trùng lá giữa các người chơi.
 
 ---
 
@@ -19,20 +19,19 @@ Thứ tự sức mạnh của các bộ bài được xếp từ cao xuống th�
 
 **Sáp > 10 điểm > 9 điểm > ... > 1 điểm.**
 
-Không áp dụng liêng. Ba lá liên tiếp (kể cả A-2-3) được tính điểm bình thường. Không có bồ đội vì bộ bài đã bỏ J, Q, K.
+Không áp dụng liêng. Ba lá liên tiếp (kể cả A-2-3) được tính điểm bình thường. Không có bồ đội vì bộ bài đã bỏ 10, J, Q, K.
 
 ### 2.1. Sáp (Three of a Kind)
 - **Định nghĩa:** Bộ 3 lá bài có **cùng giá trị số**.
-- **Thứ tự giá trị:** **A-A-A > 10-10-10 > 9-9-9 > ... > 2-2-2**.
+- **Thứ tự giá trị:** **A-A-A > 9-9-9 > ... > 2-2-2**.
 - Sáp Át là bộ bài mạnh nhất. Mọi sáp đều thắng bài 10 điểm.
 
 ### 2.2. Điểm
 - **Định nghĩa:** Các bộ bài không phải sáp được tính theo tổng điểm của 3 lá:
   - Quân **Át (A)**: tính **1 điểm**.
   - Các quân từ **2 đến 9**: tính theo số trên mặt lá.
-  - Quân **10**: tính **0 điểm** (tương đương cộng 10 khi lấy hàng đơn vị).
 - **Điểm số cuối cùng:** Lấy hàng đơn vị của tổng; nếu bằng **0** thì tính là **10 điểm**.
-- **Ví dụ:** 2-3-5 và 2-8-10 đều là **10 điểm**; A-2-3 là **6 điểm**; 4-5-6 là **5 điểm**.
+- **Ví dụ:** 2-3-5 và 2-9-9 đều là **10 điểm**; A-2-3 là **6 điểm**; 4-5-6 là **5 điểm**.
 - **Xếp hạng:** **10 > 9 > 8 > ... > 1**. Không có bài 0 điểm.
 - **So sánh khi bằng điểm:** Áp dụng quy tắc so chất và lá bài ở mục 3.
 
@@ -55,7 +54,7 @@ $$\mathbf{Rô\ (\diamond)} > \mathbf{Cơ\ (\heartsuit)} > \mathbf{Chuồn\ /\ T�
 
 ### So sánh chi tiết từng lá:
 Trong cùng một chất, thứ tự giá trị quân bài từ lớn đến bé là:
-$$\mathbf{A} > \mathbf{10} > \mathbf{9} > \mathbf{8} > \mathbf{7} > \mathbf{6} > \mathbf{5} > \mathbf{4} > \mathbf{3} > \mathbf{2}$$
+$$\mathbf{A} > \mathbf{9} > \mathbf{8} > \mathbf{7} > \mathbf{6} > \mathbf{5} > \mathbf{4} > \mathbf{3} > \mathbf{2}$$
 
 - Hệ thống sẽ sắp xếp 3 lá bài của mỗi người theo chất giảm dần (Rô $\rightarrow$ Cơ $\rightarrow$ Chuồn $\rightarrow$ Bích), trong cùng chất sắp xếp theo rank giảm dần (A $\rightarrow$ 2).
 - Tiến hành so sánh đối đầu từng lá một (lá thứ nhất, lá thứ hai, lá thứ ba). Người nào có lá vượt trội trước sẽ giành chiến thắng.

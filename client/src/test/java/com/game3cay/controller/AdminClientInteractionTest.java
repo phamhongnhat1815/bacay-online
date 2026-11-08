@@ -197,7 +197,7 @@ class AdminClientInteractionTest {
     }
 
     private static PlayerStateSnapshot player(String balance, long version) {
-        return new PlayerStateSnapshot("round-1", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.TEN, Suit.CO),
+        return new PlayerStateSnapshot("round-1", List.of(new Card(Rank.ACE, Suit.RO), new Card(Rank.SEVEN, Suit.CO),
                 new Card(Rank.NINE, Suit.BICH)), new BigDecimal(balance), BigDecimal.TEN, false, false, version);
     }
 

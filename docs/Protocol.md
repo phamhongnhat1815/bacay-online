@@ -48,7 +48,7 @@ Chỉ phiên ADMIN truy cập endpoint quản trị, bao gồm soi bài trực t
 
 Máy chủ phát bài riêng qua DEAL_CARD/PLAYER_STATE cho đúng userId. GAME_UPDATED/BET_UPDATED không chứa bài đối thủ. ROUND_RESULT chỉ phát thông tin theo chính sách kết thúc ván. Client không tự quyết định profit hay người thắng.
 
-Luật hiện tại dùng 40 lá A–10, chỉ sinh `SAP`/`DIEM`; J/Q/K và `LIENG`/`BO_DOI` vẫn giữ tên enum để đọc dữ liệu cũ. Refactor không đổi frame, thứ tự PacketType hoặc phiên bản v5. Khi chỉ còn một người chưa úp, hoặc ván bị hủy, ROUND_RESULT không công khai bài riêng; khi showdown, chỉ tay bài của người chưa úp được công khai. Đối chiếu [luật chơi](../Game_Rules.md) khi thay đổi ý nghĩa dữ liệu, và chạy [kiểm thử protocol/TLS](Testing.md) trước khi phân phối đồng bộ các ứng dụng.
+Luật hiện tại dùng 36 lá A–9, chỉ sinh `SAP`/`DIEM`; 10/J/Q/K và `LIENG`/`BO_DOI` vẫn giữ tên enum để đọc dữ liệu cũ. Refactor không đổi frame, thứ tự PacketType hoặc phiên bản v5. Khi chỉ còn một người chưa úp, hoặc ván bị hủy, ROUND_RESULT không công khai bài riêng; khi showdown, chỉ tay bài của người chưa úp được công khai. Đối chiếu [luật chơi](../Game_Rules.md) khi thay đổi ý nghĩa dữ liệu, và chạy [kiểm thử protocol/TLS](Testing.md) trước khi phân phối đồng bộ các ứng dụng.
 
 Snapshot có stateVersion. Client bỏ dữ liệu cũ và phải reconcile đầy đủ khi khôi phục kết nối; không được giả định đã nhận đủ mọi push trong thời gian mất mạng. Khi phòng trở về WAITING, trạng thái ván cũ phải được xóa dù client bỏ lỡ ROUND_RESULT.
 
