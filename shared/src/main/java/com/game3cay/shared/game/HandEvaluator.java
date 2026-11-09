@@ -3,6 +3,8 @@ package com.game3cay.shared.game;
 import com.game3cay.shared.model.Card;
 import com.game3cay.shared.model.Hand;
 import com.game3cay.shared.model.HandType;
+import com.game3cay.shared.model.Rank;
+import com.game3cay.shared.model.Suit;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -13,7 +15,12 @@ public class HandEvaluator implements Comparator<Hand> {
     private static final int HAND_SIZE = 3;
     private static final Comparator<Card> CARD_STRENGTH = Comparator
             .comparingInt((Card c) -> c.suit().compareValue())
-            .thenComparingInt(c -> c.rank().rankValue());
+            .thenComparingInt(HandEvaluator::tieBreakRank);
+
+    private static int tieBreakRank(Card card) {
+        // Only the diamond ace is high when breaking ties; other aces are below two.
+        return card.rank() == Rank.ACE && card.suit() != Suit.RO ? 1 : card.rank().rankValue();
+    }
 
     public Hand evaluate(List<Card> cards) {
         if (cards == null || cards.size() != HAND_SIZE || cards.stream().anyMatch(Objects::isNull)

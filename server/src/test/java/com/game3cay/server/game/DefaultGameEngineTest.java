@@ -86,7 +86,7 @@ class DefaultGameEngineTest {
   }
 
   @Test
-  void equalPointsUseHighestSuitThenThatCardsRankWithAceHighest() {
+  void equalPointsUseHighestSuitThenThatCardsRankWithDiamondAceHighest() {
     var suits = List.of(Suit.RO, Suit.CO, Suit.CHUON, Suit.BICH);
     for (int i = 0; i < suits.size() - 1; i++) {
       var higherSuit = eval.evaluate(List.of(c(Rank.TWO, suits.get(i)), c(Rank.THREE, Suit.BICH), c(Rank.FIVE, Suit.BICH)));

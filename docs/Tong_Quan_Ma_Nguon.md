@@ -139,7 +139,7 @@ Các snapshot không thay thế cho nhau. Ví dụ, vẽ người đang đến l
 | [network/RuntimeSettings.java](../shared/src/main/java/com/game3cay/shared/network/RuntimeSettings.java) | Đọc resource properties và giá trị ghi đè bằng Java system property. |
 | [security/PasswordUtil.java](../shared/src/main/java/com/game3cay/shared/security/PasswordUtil.java) | Tạo hash và kiểm mật khẩu bằng PBKDF2WithHmacSHA256, salt riêng và 310.000 vòng khi tạo hash mới. |
 
-Luật hiện tại dùng 36 lá A–9, xếp Sáp cao hơn mọi bài điểm, điểm 0 sau phép chia dư được tính thành 10. Khi bằng cấp bài, so chất Rô > Cơ > Chuồn > Bích; trong cùng chất, Át lớn nhất. 10/J/Q/K và enum `LIENG`, `BO_DOI` còn được giữ để đọc dữ liệu cũ; sự tồn tại của chúng không có nghĩa ván mới sử dụng các luật này.
+Luật hiện tại dùng 36 lá A–9, xếp Sáp cao hơn mọi bài điểm, điểm 0 sau phép chia dư được tính thành 10. Khi bằng cấp bài, so chất Rô > Cơ > Chuồn > Bích; trong cùng chất, Át rô lớn nhất, còn Át cơ, chuồn và bích nhỏ hơn 2. Sáp Át vẫn là sáp lớn nhất. 10/J/Q/K và enum `LIENG`, `BO_DOI` còn được giữ để đọc dữ liệu cũ; sự tồn tại của chúng không có nghĩa ván mới sử dụng các luật này.
 
 ## 5 Module server
 

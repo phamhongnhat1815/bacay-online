@@ -165,7 +165,8 @@ public final class MainFrame extends JFrame implements ClientView {
                         + "Điểm: lấy hàng đơn vị của tổng; A = 1, các lá 2–9 tính theo số.\n"
                         + "Hàng đơn vị bằng 0 được tính là 10 điểm.\n"
                         + "Cùng điểm: so chất cao nhất Rô > Cơ > Chuồn > Bích.\n"
-                        + "Nếu cùng chất, so số của lá đó; Át lớn nhất.\n\n"
+                        + "Trong chất Rô: A > 9 > ... > 2.\n"
+                        + "Trong chất Cơ, Chuồn, Bích: 9 > ... > 2 > A.\n\n"
                         + "Đủ người sẵn sàng, bàn tự đếm ngược để chia bài.\n"
                         + "Chọn Tạm nghỉ / Chơi tiếp ở thanh dưới bàn để đổi trạng thái.\n"
                         + "Tài khoản mới được tặng 1.000 điểm giải trí.",

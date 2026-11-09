@@ -50,14 +50,16 @@ $$\mathbf{Rô\ (\diamond)} > \mathbf{Cơ\ (\heartsuit)} > \mathbf{Chuồn\ /\ T�
 | **3** | **Chuồn / Tép (Clubs)** | ♣ | Đen | Thứ ba |
 | **4** | **Bích (Spades)** | ♠ | Đen | **Thấp nhất** |
 
-**Khi bằng điểm:** So chất cao nhất có trong bài theo thứ tự **Rô ♦ > Cơ ♥ > Chuồn ♣ > Bích ♠**. Nếu cùng chất, so số của lá cao nhất thuộc chất đó; **Át lớn nhất**.
+**Khi bằng điểm:** So chất cao nhất có trong bài theo thứ tự **Rô ♦ > Cơ ♥ > Chuồn ♣ > Bích ♠**. Nếu cùng chất, so số của lá cao nhất thuộc chất đó; **chỉ Át rô lớn nhất**, còn **Át cơ, Át chuồn/tép và Át bích nhỏ hơn quân 2 trong cùng chất**.
 
 ### So sánh chi tiết từng lá:
-Trong cùng một chất, thứ tự giá trị quân bài từ lớn đến bé là:
-$$\mathbf{A} > \mathbf{9} > \mathbf{8} > \mathbf{7} > \mathbf{6} > \mathbf{5} > \mathbf{4} > \mathbf{3} > \mathbf{2}$$
+Thứ tự giá trị quân bài từ lớn đến bé trong từng chất:
+- **Rô ♦:** **A > 9 > 8 > 7 > 6 > 5 > 4 > 3 > 2**.
+- **Cơ ♥, Chuồn/Tép ♣, Bích ♠:** **9 > 8 > 7 > 6 > 5 > 4 > 3 > 2 > A**.
 
-- Hệ thống sẽ sắp xếp 3 lá bài của mỗi người theo chất giảm dần (Rô $\rightarrow$ Cơ $\rightarrow$ Chuồn $\rightarrow$ Bích), trong cùng chất sắp xếp theo rank giảm dần (A $\rightarrow$ 2).
+- Hệ thống sẽ sắp xếp 3 lá bài của mỗi người theo chất giảm dần (Rô $\rightarrow$ Cơ $\rightarrow$ Chuồn $\rightarrow$ Bích), trong cùng chất sắp xếp theo thứ tự giá trị ở trên.
 - Tiến hành so sánh đối đầu từng lá một (lá thứ nhất, lá thứ hai, lá thứ ba). Người nào có lá vượt trội trước sẽ giành chiến thắng.
+- Quy tắc Át thấp chỉ áp dụng khi so lá để phân định hòa; Át vẫn tính 1 điểm và sáp Át vẫn là sáp lớn nhất.
 
 ---
 

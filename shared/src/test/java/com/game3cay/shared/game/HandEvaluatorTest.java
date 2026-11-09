@@ -18,6 +18,56 @@ class HandEvaluatorTest {
     private final HandEvaluator evaluator = new HandEvaluator();
 
     @Test
+    void onlyDiamondAceIsHighWhenSortingCardsWithinEachSuit() {
+        for (Suit suit : Suit.values()) {
+            Hand aceHand = evaluator.evaluate(List.of(new Card(Rank.ACE, suit),
+                    new Card(Rank.TWO, suit), new Card(Rank.THREE, suit)));
+            Hand eightHand = evaluator.evaluate(List.of(new Card(Rank.TWO, suit),
+                    new Card(Rank.SIX, suit), new Card(Rank.EIGHT, suit)));
+            assertEquals(6, aceHand.score());
+            assertEquals(aceHand.score(), eightHand.score());
+            int expected = suit == Suit.RO ? 1 : -1;
+            assertEquals(expected, Integer.signum(evaluator.compare(aceHand, eightHand)), suit.name());
+            assertEquals(-expected, Integer.signum(evaluator.compare(eightHand, aceHand)), suit.name());
+        }
+    }
+
+    @Test
+    void heartAndClubAcesLoseToTwoOfTheSameSuit() {
+        for (Suit suit : List.of(Suit.CO, Suit.CHUON)) {
+            Hand aceHand = evaluator.evaluate(List.of(new Card(Rank.ACE, suit),
+                    new Card(Rank.NINE, Suit.BICH), new Card(Rank.SEVEN, Suit.BICH)));
+            Hand twoHand = evaluator.evaluate(List.of(new Card(Rank.TWO, suit),
+                    new Card(Rank.EIGHT, Suit.BICH), new Card(Rank.SEVEN, Suit.BICH)));
+            assertEquals(aceHand.score(), twoHand.score());
+            assertTrue(evaluator.compare(aceHand, twoHand) < 0, suit.name());
+            assertTrue(evaluator.compare(twoHand, aceHand) > 0, suit.name());
+        }
+    }
+
+    @Test
+    void lowAceRuleAlsoAppliesAfterMatchingHigherCards() {
+        Card common = new Card(Rank.NINE, Suit.RO);
+        Hand aceHand = evaluator.evaluate(List.of(common, new Card(Rank.ACE, Suit.CO),
+                new Card(Rank.EIGHT, Suit.BICH)));
+        Hand twoHand = evaluator.evaluate(List.of(common, new Card(Rank.TWO, Suit.CO),
+                new Card(Rank.SEVEN, Suit.BICH)));
+        assertEquals(aceHand.score(), twoHand.score());
+        assertTrue(evaluator.compare(aceHand, twoHand) < 0);
+        assertTrue(evaluator.compare(twoHand, aceHand) > 0);
+    }
+
+    @Test
+    void threeAcesWithoutDiamondStillBeatThreeNines() {
+        Hand aces = evaluator.evaluate(List.of(new Card(Rank.ACE, Suit.CO),
+                new Card(Rank.ACE, Suit.CHUON), new Card(Rank.ACE, Suit.BICH)));
+        Hand nines = evaluator.evaluate(List.of(new Card(Rank.NINE, Suit.RO),
+                new Card(Rank.NINE, Suit.CO), new Card(Rank.NINE, Suit.CHUON)));
+        assertEquals(HandType.SAP, aces.handType());
+        assertTrue(evaluator.compare(aces, nines) > 0);
+    }
+
+    @Test
     void invalidHandsAreRejectedBeforeEvaluation() {
         Card card = new Card(Rank.ACE, Suit.RO);
         assertThrows(IllegalArgumentException.class, () -> evaluator.evaluate(null));
